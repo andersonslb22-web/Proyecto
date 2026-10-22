@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "match": {
+    "match_id": "JUVENTUS-LAZIO-SERIE-A-2026-10-18",
+    "competition": "Italia · Serie A · Ronda 7",
+    "kickoff": null,
+    "teams": [
+      {
+        "team_id": "juventus",
+        "name": "Juventus",
+        "side": "home",
+        "sample": {
+          "period": "season_to_date",
+          "matches_count": 6,
+          "from": null,
+          "to": null,
+          "scope": "all",
+          "source_label": "Sofascore · Serie A 26/27"
+        },
+        "urgency": "unknown",
+        "urgency_adjustment": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
+        "structural_absences": [
+          { "absence_id": "juventus-ekhator-j", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "juventus-grabara-k", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "juventus-locatelli-m", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "juventus-milik-a", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "juventus-thuram-k", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "juventus-yildiz-k", "is_structural": null, "starter": null, "confirmation": "confirmed" }
+        ],
+        "stats": {
+          "goals_scored": { "value": 1.5, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "xg": { "value": 1.62, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "xgot": { "value": 1.75, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "shots_total": { "value": 18.3, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "shots_on_target": { "value": 6.5, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "shots_off_target": { "value": 7.0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "blocked_shots": { "value": 4.8, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "big_chances_created": { "value": 3.0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · grandes ocasiones creadas por partido" },
+          "big_chances_missed": { "value": 2.0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "possession_pct": { "value": 58.7, "unit": "percent", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "passes_opposition_half": { "value": 311, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "corners": { "value": 8.7, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "goals_conceded": { "value": 0.8, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "xga": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
+          "goals_prevented": { "value": -0.55, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · goles evitados por partido" },
+          "clearances": { "value": 15.2, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "errors": { "value": 0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · errores que conducen al gol por partido" },
+          "errors_leading_to_shot": { "value": 0.16666666666666666, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · 1 error en 6 partidos, dividido por 6" },
+          "fouls": { "value": 13.7, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "cards": { "value": 1.5, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · amarillas por partido + rojas (0) / 6 partidos" },
+          "duels_won": { "value": 42.3, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · duelos ganados por partido" }
+        }
+      },
+      {
+        "team_id": "lazio",
+        "name": "Lazio",
+        "side": "away",
+        "sample": {
+          "period": "season_to_date",
+          "matches_count": 6,
+          "from": null,
+          "to": null,
+          "scope": "all",
+          "source_label": "Sofascore · Serie A 26/27"
+        },
+        "urgency": "unknown",
+        "urgency_adjustment": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
+        "structural_absences": [
+          { "absence_id": "lazio-cancellieri-m", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "lazio-furlanetto-a", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "lazio-gudmundsson-a", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "lazio-marusic-a", "is_structural": null, "starter": null, "confirmation": "confirmed" },
+          { "absence_id": "lazio-rovella-n", "is_structural": null, "starter": null, "confirmation": "confirmed" }
+        ],
+        "stats": {
+          "goals_scored": { "value": 1.8, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "xg": { "value": 1.60, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "xgot": { "value": 1.57, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "shots_total": { "value": 13.5, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "shots_on_target": { "value": 4.3, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "shots_off_target": { "value": 6.2, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "blocked_shots": { "value": 3.0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "big_chances_created": { "value": 2.8, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · grandes ocasiones creadas por partido" },
+          "big_chances_missed": { "value": 1.5, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "possession_pct": { "value": 49.5, "unit": "percent", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "passes_opposition_half": { "value": 208, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "corners": { "value": 4.8, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "goals_conceded": { "value": 0.7, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "xga": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
+          "goals_prevented": { "value": 4.36, "unit": "goals", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · goles evitados por partido" },
+          "clearances": { "value": 21.0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "errors": { "value": 0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · errores que conducen al gol por partido" },
+          "errors_leading_to_shot": { "value": 0.16666666666666666, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · 1 error en 6 partidos, dividido por 6" },
+          "fouls": { "value": 13.2, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · promedio por partido" },
+          "cards": { "value": 1.8, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · amarillas por partido + rojas (0) / 6 partidos" },
+          "duels_won": { "value": 40.0, "unit": "count", "status": "observed", "source_label": "Sofascore · Serie A 26/27 · duelos ganados por partido" }
+        }
+      }
+    ],
+    "home_advantage": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
+    "quotes": [
+      { "quote_id": "juventus-simple-win-home", "market": "simple_win", "selection": "home", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 1.55 },
+      { "quote_id": "juventus-simple-win-away", "market": "simple_win", "selection": "away", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 6.00 }
+    ]
+  }
+}

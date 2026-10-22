@@ -1,0 +1,150 @@
+[DATOS_ENTRADA_PARTIDO]
+Información del Partido
+ * Competición: Fútbol, Italia, Serie A, Ronda 7
+ * Encuentro: Juventus vs. Lazio
+ * Fecha y hora: 18.10.2026 a las 14:45 (2:45 p. m.)
+ * Cuotas: 1: 1.55 | X: 4.10 | 2: 6.00
+ * Entrenadores: Spalletti L. (Juventus) / Gattuso G. (Lazio)
+Clasificación Actual
+ * Lazio: P: 6 | Diff: +7 (11:4) | PTS: 16 (Puesto 3)
+ * Juventus: P: 6 | Diff: +4 (9:5) | PTS: 11 (Puesto 8)
+Historial Reciente y Enfrentamientos (H2H)
+ * Últimos partidos: Juventus (General)
+   * 15.10. Celta de Vigo 1 - 2 Juventus (Victoria)
+   * 11.10. Cagliari 1 - 1 Juventus (Empate)
+   * 02.10. Juventus 0 - 1 Cremonese (Derrota)
+   * 20.09. Juventus 2 - 0 Atalanta (Victoria)
+   * 17.09. Juventus 5 - 0 Nijmegen (Victoria)
+ * Últimos partidos: Lazio (General)
+   * 11.10. Lazio 3 - 1 Monza (Victoria)
+   * 03.10. Lazio 3 - 3 Juve Stabia (Empate)
+   * 27.09. Lazio 2 - 0 Arezzo (Victoria)
+   * 19.09. Venezia 0 - 2 Lazio (Victoria)
+   * 12.09. Lazio 2 - 2 AC Milan (Empate)
+ * Últimos partidos: Juventus como Local
+   * 02.10. Juventus 0 - 1 Cremonese (Derrota)
+   * 20.09. Juventus 2 - 0 Atalanta (Victoria)
+   * 17.09. Juventus 5 - 0 Nijmegen (Victoria)
+   * 06.09. Juventus 1 - 1 AC Milan (Empate)
+   * 29.08. Juventus 2 - 0 Parma (Victoria)
+ * Últimos partidos: Lazio como Visitante
+   * 19.09. Venezia 0 - 2 Lazio (Victoria)
+   * 07.09. Udinese 1 - 2 Lazio (Victoria)
+   * 24.08. Bolonia 0 - 1 Lazio (Victoria)
+   * 09.08. Frosinone 1 - 2 Lazio (Victoria)
+   * 02.08. Ascoli 1 - 2 Lazio (Victoria)
+Alineaciones Probables (con notas promedio de rendimiento)
+ * Juventus (4-2-3-1): 25 Vicario (6.7) — 15 Kalulu (7.2), 3 Bremer (7.5), 26 Lucumi (7.5) — 2 Çelik (7.0), 12 Douglas Luiz (7.4), 29 Sarr (7.2), 22 McKennie (6.6) — 31 González (7.2), 17 Alajbegovic (7.0) — 9 Kolo Muani (6.8).
+ * Lazio (4-3-3): 35 Mandas (7.8) — 17 Tavares (7.2), 25 Provstgaard (6.9), 37 Sutalo (6.7), 15 Floriani (7.2) — 24 Taylor (7.1), 21 Belahyane (6.8), 16 Frattesi (7.0) — 10 Zaccagni (7.4), 14 Noslin (7.2), 11 Isaksen (6.7).
+Bajas Confirmadas
+ * Juventus: Ekhator J. (Lesión muscular), Grabara K. (Lesión de rodilla), Locatelli M. (Lesión de rodilla), Milik A. (Inactivo), Thuram K. (Lesión de rodilla), Yildiz K. (Lesión de pie).
+ * Lazio: Cancellieri M. (Lesión de pierna), Furlanetto A. (Lesión de rodilla), Gudmundsson A. (Lesión de hombro), Marusic A. (Lesión muscular), Rovella N. (Lesión de pantorrilla).
+Estadísticas Juventus (Serie A 26/27)
+ * Nota Sofascore promedio: 7.61
+ * Resumen: Partidos: 6 | Goles anotados: 9 | Goles encajados: 5 | Asistencias: 7
+ * Desempeño en carrera (por partido): Distancia: 99.4 km | Sprints: 88.5
+ * Ataque:
+   * Goles por partido: 1.5
+   * xG por partido: 1.62
+   * Tasa de conversión: 8%
+   * xGOT por partido: 1.75
+   * Goles de penal: 0/0
+   * Goles de tiro libre: 0/7
+   * Goles desde dentro del área: 8/58
+   * Goles desde fuera del área: 1/52
+   * Grandes ocasiones por partido: 3.0
+   * Grandes ocasiones falladas por partido: 2.0
+   * Total de disparos por partido: 18.3
+   * Tiros a puerta por partido: 6.5
+   * Disparos desviados por partido: 7.0
+   * Disparos bloqueados por partido: 4.8
+   * Regates acertados por partido: 8.5
+   * Tiros de esquina por partido: 8.7
+   * Tiros libres por partido: 10.2
+   * Contraataques: 5
+ * Pases (Juventus):
+   * xA por partido: 1.46
+   * Posesión de pelota: 58.7%
+   * Precisión por partido: 505 (88.7%)
+   * Pases completados en campo contrario: 311 (86.3%)
+   * Pases largos completados: 13.7 (53.2%)
+   * Centros realizados: 5.8 (25.9%)
+ * Defensa (Juventus):
+   * Porterías a cero: 3
+   * Goles recibidos por partido: 0.8
+   * Entradas por partido: 14.3
+   * Intercepciones por partido: 7.2
+   * Despejes por partido: 15.2
+   * Balones recuperados por partido: 46.0
+   * Errores que llevan a disparo: 1
+   * Errores que conducen al gol: 0
+   * Penales cometidos: 0
+   * Goles de penal encajados: 0
+   * Despeje fuera de línea: 1
+   * Entrada del último hombre: 0
+ * Portería (Juventus):
+   * Goles evitados: -0.55
+   * Paradas por partido: 1.7
+ * Otros (Juventus):
+   * Duelos ganados por partido: 42.3 (49.1%)
+   * Duelos terrestres ganados: 33.0 (50.3%)
+   * Duelos aéreos ganados: 9.3 (45.5%)
+   * Posesión perdida por partido: 119.8
+   * Faltas concedidas por partido: 13.7
+   * Tarjetas amarillas por partido: 1.5
+   * Tarjetas rojas: 0
+Estadísticas Lazio (Serie A 26/27)
+ * Nota Sofascore promedio: 7.73
+ * Resumen: Partidos: 6 | Goles anotados: 11 | Goles encajados: 4 | Asistencias: 9
+ * Desempeño en carrera (por partido): Distancia: 98.3 km | Sprints: 106.3
+ * Ataque:
+   * Goles por partido: 1.8
+   * xG por partido: 1.60
+   * Tasa de conversión: 14%
+   * xGOT por partido: 1.57
+   * Goles de penal: 1/1
+   * Goles de tiro libre: 0/6
+   * Goles desde dentro del área: 10/44
+   * Goles desde fuera del área: 1/37
+   * Grandes ocasiones por partido: 2.8
+   * Grandes ocasiones falladas por partido: 1.5
+   * Total de disparos por partido: 13.5
+   * Tiros a puerta por partido: 4.3
+   * Disparos desviados por partido: 6.2
+   * Disparos bloqueados por partido: 3.0
+   * Regates acertados por partido: 6.7
+   * Tiros de esquina por partido: 4.8
+   * Tiros libres por partido: 11.8
+   * Contraataques: 6
+ * Pases (Lazio):
+   * xA por partido: 1.16
+   * Posesión de pelota: 49.5%
+   * Precisión por partido: 396 (86.1%)
+   * Pases completados en campo contrario: 208 (82.0%)
+   * Pases largos completados: 13.2 (56.8%)
+   * Centros realizados: 2.3 (16.9%)
+ * Defensa (Lazio):
+   * Porterías a cero: 3
+   * Goles recibidos por partido: 0.7
+   * Entradas por partido: 13.8
+   * Intercepciones por partido: 8.7
+   * Despejes por partido: 21.0
+   * Balones recuperados por partido: 48.0
+   * Errores que llevan a disparo: 1
+   * Errores que conducen al gol: 0
+   * Penales cometidos: 1
+   * Goles de penal encajados: 0
+   * Despeje fuera de línea: 2
+   * Entrada del último hombre: 0
+ * Portería (Lazio):
+   * Goles evitados: 4.36
+   * Paradas por partido: 4.3
+ * Otros (Lazio):
+   * Duelos ganados por partido: 40.0 (47.0%)
+   * Duelos terrestres ganados: 32.0 (47.6%)
+   * Duelos aéreos ganados: 8.0 (44.4%)
+   * Posesión perdida por partido: 108.8
+   * Faltas concedidas por partido: 13.2
+   * Tarjetas amarillas por partido: 1.8
+   * Tarjetas rojas: 0
+[/DATOS_ENTRADA_PARTIDO]
