@@ -4,6 +4,22 @@ export type GateStatus = 'pass' | 'fail' | 'not_evaluable'
 export type DecisionStatus = 'ELIGIBLE' | 'REJECT' | 'not_evaluable'
 export type EvaluationRoute = 'primary' | 'scaled' | 'fallback' | 'no_fallback'
 
+export type RouteEvaluation = {
+  candidate: Candidate
+  status: DecisionStatus
+  score: number | null
+  gate: {
+    status: GateStatus
+    projection: number | null
+    threshold: number | null
+    mop: number | null
+    unit: string
+    explanation: string
+  }
+  penalties: string[]
+  trace: string[]
+}
+
 export type CandidateEvaluation = {
   candidate: Candidate
   status: DecisionStatus
@@ -20,10 +36,8 @@ export type CandidateEvaluation = {
   scoreExplanation: string[]
   penalties: string[]
   trace: string[]
-  scaledCandidate: Candidate | null
-  scaledStatus: DecisionStatus | null
-  fallbackCandidate: Candidate | null
-  fallbackStatus: DecisionStatus | null
+  scaled: RouteEvaluation | null
+  fallback: RouteEvaluation | null
 }
 
 export type MarketResult = {
@@ -429,7 +443,7 @@ function evaluate(input: MatchInput, candidate: Candidate): CandidateEvaluation 
     candidate, status: 'not_evaluable', route: 'primary', score: null,
     gate: unavailableGate('No se pudo calcular el colchón.', null, candidate.line_unit),
     scoreExplanation: [], penalties: [], trace: [],
-    scaledCandidate: null, scaledStatus: null, fallbackCandidate: null, fallbackStatus: null,
+    scaled: null, fallback: null,
   }
   const sampleError = validSamples(input)
   if (sampleError) {
@@ -489,8 +503,7 @@ export function analyzeMatch(input: MatchInput): MatchAnalysis {
         const scaled = evaluate(input, candidateWithLine(item.candidate, item.candidate.line_value + step * levels))
         item.trace.push(`Escalado interno a línea ${scaled.candidate.line_value}: score y gate recalculados; ${scaled.status}.`)
         if (scaled.status === 'ELIGIBLE') {
-          item.scaledCandidate = scaled.candidate
-          item.scaledStatus = scaled.status
+          item.scaled = scaled
           item.route = 'scaled'
         }
       }
@@ -504,8 +517,7 @@ export function analyzeMatch(input: MatchInput): MatchAnalysis {
       continue
     }
     item.route = 'fallback'
-    item.fallbackCandidate = lower.candidate
-    item.fallbackStatus = lower.status
+    item.fallback = lower
     if (lower.status === 'ELIGIBLE') continue
     const fallback = dcFallback(input, candidates)
     if (!fallback) {
@@ -513,8 +525,7 @@ export function analyzeMatch(input: MatchInput): MatchAnalysis {
       continue
     }
     const dc = evaluate(input, fallback)
-    item.fallbackCandidate = dc.candidate
-    item.fallbackStatus = dc.status
+    item.fallback = dc
     item.trace.push(`Fallback ${fallback.selection}: score y gate recalculados; ${dc.status}.`)
   }
   return { markets: results }

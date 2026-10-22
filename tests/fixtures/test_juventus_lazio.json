@@ -98,9 +98,6 @@
       }
     ],
     "home_advantage": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
-    "quotes": [
-      { "quote_id": "juventus-simple-win-home", "market": "simple_win", "selection": "home", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 1.55 },
-      { "quote_id": "juventus-simple-win-away", "market": "simple_win", "selection": "away", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 6.00 }
-    ]
+    "simple_win_odds": { "home": 1.55, "away": 6.00 }
   }
 }

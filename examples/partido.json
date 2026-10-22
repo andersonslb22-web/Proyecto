@@ -98,18 +98,6 @@
       }
     ],
     "home_advantage": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
-    "quotes": [
-      { "quote_id": "lille-galatasaray-simple-win-home", "market": "simple_win", "selection": "home", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 2.2 },
-      { "quote_id": "lille-galatasaray-simple-win-away", "market": "simple_win", "selection": "away", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 3.1 },
-      { "quote_id": "lille-galatasaray-double-chance-1x", "market": "double_chance", "selection": "1X", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 1.36 },
-      { "quote_id": "lille-galatasaray-double-chance-x2", "market": "double_chance", "selection": "X2", "team_id": null, "line_value": null, "line_unit": "none", "odds_decimal": 1.67 },
-      { "quote_id": "lille-galatasaray-ah-negative-home-1-5", "market": "asian_handicap_negative", "selection": "home", "team_id": null, "line_value": -1.5, "line_unit": "goals", "odds_decimal": 4.0 },
-      { "quote_id": "lille-galatasaray-corners-over-6-5", "market": "total_corners", "selection": "over", "team_id": null, "line_value": 6.5, "line_unit": "corners", "odds_decimal": 1.29 },
-      { "quote_id": "lille-galatasaray-corners-under-6-5", "market": "total_corners", "selection": "under", "team_id": null, "line_value": 6.5, "line_unit": "corners", "odds_decimal": 3.5 },
-      { "quote_id": "lille-galatasaray-goals-over-1-5", "market": "total_goals", "selection": "over", "team_id": null, "line_value": 1.5, "line_unit": "goals", "odds_decimal": 1.33 },
-      { "quote_id": "lille-galatasaray-goals-under-1-5", "market": "total_goals", "selection": "under", "team_id": null, "line_value": 1.5, "line_unit": "goals", "odds_decimal": 3.2 },
-      { "quote_id": "lille-team-goals-over-0-5", "market": "team_goals", "selection": "over", "team_id": "lille", "line_value": 0.5, "line_unit": "goals", "odds_decimal": 1.29 },
-      { "quote_id": "galatasaray-team-goals-over-0-5", "market": "team_goals", "selection": "over", "team_id": "galatasaray", "line_value": 0.5, "line_unit": "goals", "odds_decimal": 1.4 }
-    ]
+    "simple_win_odds": { "home": 2.20, "away": 3.10 }
   }
 }
