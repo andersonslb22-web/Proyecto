@@ -1,4 +1,11 @@
+import { loadEnvFile } from 'node:process'
 import { createGeminiApiServer } from './geminiApi'
+
+try {
+  loadEnvFile('.env.local')
+} catch {
+  // La configuración puede llegar desde el entorno del proceso.
+}
 
 const port = 4174
 const server = createGeminiApiServer({

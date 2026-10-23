@@ -4,6 +4,7 @@
     "match_id": "JUVENTUS-LAZIO-SERIE-A-2026-10-18",
     "competition": "Italia · Serie A · Ronda 7",
     "kickoff": null,
+    "simple_win_odds": { "home": 1.8, "away": 3.6 },
     "teams": [
       {
         "team_id": "juventus",
@@ -97,7 +98,6 @@
         }
       }
     ],
-    "home_advantage": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
-    "simple_win_odds": { "home": 1.55, "away": 6.00 }
+    "home_advantage": { "value": null, "unit": "goals", "status": "missing", "source_label": null }
   }
 }

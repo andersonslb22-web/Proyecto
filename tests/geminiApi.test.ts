@@ -10,11 +10,14 @@ function syntheticInput(eligible: boolean): MatchInput {
     name: `Synthetic ${side} name must not reach provider`,
     side,
     sample: { period: 'season_to_date', matches_count: 6, from: null, to: null, scope: 'all', source_label: 'synthetic only' },
-    urgency: 'high',
+    urgency: eligible ? 'high' : 'low',
     urgency_adjustment: { value: 0, unit: 'goals', status: 'observed', source_label: 'synthetic only' },
     structural_absences: [],
     stats: Object.fromEntries(statDefinitions.map(({ key, unit }) => [key, {
-      value: eligible ? ({ goals_scored: 2, xg: 2.4, shots_on_target: 6, big_chances_created: 3, goals_conceded: 0.5, errors: 0, fouls: 10 }[key] ?? 1) : 0,
+      value: eligible ? ({
+        goals_scored: eligible ? 2 : 0, xg: eligible ? (side === 'home' ? 3 : 1) : 0, xga: eligible ? (side === 'home' ? 0.5 : 1.5) : 0,
+        shots_on_target: 6, big_chances_created: 3, goals_conceded: 0.5, errors: 0, fouls: 10,
+      }[key] ?? 1) : 0,
       unit,
       status: 'observed',
       source_label: 'synthetic only',
@@ -27,11 +30,8 @@ function syntheticInput(eligible: boolean): MatchInput {
       competition: 'Synthetic competition, private field',
       kickoff: null,
       teams: [createTeam('home'), createTeam('away')],
-      home_advantage: { value: 0.2, unit: 'goals', status: 'observed', source_label: 'synthetic only' },
-      quotes: [{
-        quote_id: 'SYNTH-QUOTE-001', market: 'team_goals', selection: 'over', team_id: 'SYNTH-HOME',
-        line_value: 0.5, line_unit: 'goals', odds_decimal: 2.2,
-      }],
+      simple_win_odds: { home: 2.2, away: 3.1 },
+      home_advantage: { value: null, unit: 'goals', status: 'missing', source_label: null },
     },
   }
 }
@@ -138,6 +138,20 @@ describe('POST /api/v1/gemini/justifications', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('rechaza propiedades de cuotas fuera del bloque de victoria simple', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+    const url = await startApi({ apiKey: 'test-only-key', fetchImpl: fetchMock })
+    const input = syntheticInput(false) as MatchInput & { match: MatchInput['match'] & Record<string, unknown> }
+    ;(input.match as MatchInput['match'] & Record<string, unknown>).quotes = []
+    const response = await fetch(url, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input }),
+    })
+    expect(response.status).toBe(400)
+    expect((await response.json()).error.code).toBe('INVALID_REQUEST')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('responde con error genérico si hay elegibles pero falta la clave', async () => {
     const fetchMock = vi.fn<typeof fetch>()
     const url = await startApi({ fetchImpl: fetchMock })
@@ -152,12 +166,24 @@ describe('POST /api/v1/gemini/justifications', () => {
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
       expect((init?.headers as Record<string, string>)['x-goog-api-key']).toBe('synthetic-key')
       providerBody = String(init?.body)
-      return providerResponse(validModelResult())
+      const request = JSON.parse(providerBody)
+      const payload = JSON.parse(request.contents[0].parts[0].text)
+      return providerResponse({
+        contract_version: '1.0',
+        justifications: payload.eligible_candidates.map(({ candidate_id }: { candidate_id: string }) => ({
+          candidate_id,
+          narrative: 'El perfil refleja señales estadísticas consistentes en los aspectos ofensivos y defensivos observados.',
+          referenced_metric_ids: payload.metrics.slice(0, 1).map(({ metric_id }: { metric_id: string }) => metric_id),
+        })),
+      })
     })
     const url = await startApi({ apiKey: 'synthetic-key', fetchImpl: fetchMock })
     const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ input: syntheticInput(true) }) })
     expect(response.status).toBe(200)
-    expect(await response.json()).toEqual({ contract_version: '1.0', justifications: [{ ...validModelResult().justifications[0], candidate_id: 'SYNTH-QUOTE-001' }] })
+    const result = await response.json()
+    expect(result.contract_version).toBe('1.0')
+    expect(result.justifications.length).toBeGreaterThan(0)
+    expect(result.justifications.every(({ candidate_id }: { candidate_id: string }) => !candidate_id.startsWith('candidate-'))).toBe(true)
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(providerBody).not.toContain('Synthetic home name')
     expect(providerBody).not.toContain('Synthetic competition')
@@ -189,6 +215,33 @@ describe('POST /api/v1/gemini/justifications', () => {
       expect(response.status).toBe(502)
       expect((await response.json()).error.code).toBe('INVALID_MODEL_RESPONSE')
     }
+  })
+
+  it('prueba el siguiente modelo cuando el modelo automático no está disponible', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'Model not found' } }), { status: 404 }))
+      .mockImplementationOnce(async (_url, init) => {
+        const request = JSON.parse(String(init?.body))
+        const payload = JSON.parse(request.contents[0].parts[0].text)
+        return providerResponse({
+          contract_version: '1.0',
+          justifications: payload.eligible_candidates.map(({ candidate_id }: { candidate_id: string }) => ({
+            candidate_id,
+            narrative: 'El perfil refleja señales estadísticas consistentes en los aspectos ofensivos y defensivos observados.',
+            referenced_metric_ids: payload.metrics.slice(0, 1).map(({ metric_id }: { metric_id: string }) => metric_id),
+          })),
+        })
+      })
+    const url = await startApi({ apiKey: 'synthetic-key', model: 'auto', fetchImpl: fetchMock })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input: syntheticInput(true) }),
+    })
+    expect(response.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/gemini-2.5-flash:generateContent')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/gemini-2.0-flash:generateContent')
   })
 
   it('mapea timeout y errores del proveedor a errores seguros', async () => {

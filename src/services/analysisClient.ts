@@ -38,7 +38,7 @@ export function isAbortError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'name' in error && error.name === 'AbortError'
 }
 
-export async function requestJustifications(input: MatchInput, eligibleQuoteIds: string[], signal?: AbortSignal): Promise<JustificationResult> {
+export async function requestJustifications(input: MatchInput, eligibleCandidateIds: string[], signal?: AbortSignal): Promise<JustificationResult> {
   let response: Response
   try {
     response = await fetch('/api/v1/gemini/justifications', {
@@ -68,14 +68,14 @@ export async function requestJustifications(input: MatchInput, eligibleQuoteIds:
   }
 
   if (!isRecord(result) || Object.keys(result).length !== 2 || result.contract_version !== '1.0'
-    || !Array.isArray(result.justifications) || result.justifications.length !== eligibleQuoteIds.length) {
+    || !Array.isArray(result.justifications) || result.justifications.length !== eligibleCandidateIds.length) {
     return { ok: false, code: 'INVALID_MODEL_RESPONSE', message: safeMessages.INVALID_MODEL_RESPONSE }
   }
   const seen = new Set<string>()
   const justifications: Justification[] = []
   for (const item of result.justifications) {
     if (!isRecord(item) || Object.keys(item).length !== 3
-      || typeof item.candidate_id !== 'string' || !eligibleQuoteIds.includes(item.candidate_id)
+      || typeof item.candidate_id !== 'string' || !eligibleCandidateIds.includes(item.candidate_id)
       || seen.has(item.candidate_id) || typeof item.narrative !== 'string'
       || item.narrative.length < 30 || item.narrative.length > 500 || /\d/.test(item.narrative)
       || !Array.isArray(item.referenced_metric_ids)
@@ -90,7 +90,7 @@ export async function requestJustifications(input: MatchInput, eligibleQuoteIds:
       referenced_metric_ids: item.referenced_metric_ids as string[],
     })
   }
-  if (seen.size !== eligibleQuoteIds.length) {
+  if (seen.size !== eligibleCandidateIds.length) {
     return { ok: false, code: 'INVALID_MODEL_RESPONSE', message: safeMessages.INVALID_MODEL_RESPONSE }
   }
   return { ok: true, justifications }

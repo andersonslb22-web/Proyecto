@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { calculateDerivedMetrics, compareObservedMeasurements } from '../src/domain/calculations'
 import { issueLocation } from '../src/domain/issueLocation'
+import { analyzeMatch } from '../src/domain/engine'
 import { parseMatchInput } from '../src/domain/parser'
 import { statDefinitions } from '../src/domain/types'
 
@@ -19,8 +20,8 @@ function inputWith(statsHome: Record<string, unknown>, statsAway: Record<string,
     schema_version: '1.0',
     match: {
       match_id: 'TEST-1', competition: null, kickoff: null,
+      simple_win_odds: { home: 2.2, away: 3.1 },
       home_advantage: { value: null, unit: 'goals', status: 'missing', source_label: null },
-      simple_win_odds: { home: null, away: null },
       teams: [baseTeam('home-1', 'Local', 'home', statsHome), baseTeam('away-1', 'Visitante', 'away', statsAway)],
     },
   }
@@ -74,7 +75,7 @@ describe('parser JSON v1', () => {
     raw.match.teams[1].name = 'Equipo sintético Sur'
 
     const result = parseMatchInput(JSON.stringify(raw))
-    expect(statDefinitions).toHaveLength(21)
+    expect(statDefinitions).toHaveLength(22)
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.value.match.match_id).toBe('SYNTH-QA-001')
@@ -92,15 +93,103 @@ describe('parser JSON v1', () => {
     }
   })
 
-  it('accepts only simple decimal odds greater than one or null', () => {
-    const raw = inputWith({}, {})
-    raw.match.simple_win_odds = { home: 2.2, away: null }
-    expect(parseMatchInput(JSON.stringify(raw)).ok).toBe(true)
+  it('derives urgency from standings position relative to the qualification cutoff', () => {
+    const cases = [
+      { position: 25, expected: 'high' },
+      { position: 24, expected: 'medium' },
+      { position: 22, expected: 'medium' },
+      { position: 21, expected: 'low' },
+    ] as const
 
-    for (const invalidOdds of [1, 0, -1, '2.2']) {
-      raw.match.simple_win_odds = { home: invalidOdds, away: null }
-      expect(parseMatchInput(JSON.stringify(raw)).ok, String(invalidOdds)).toBe(false)
+    for (const { position, expected } of cases) {
+      const raw = inputWith({}, {})
+      raw.match.standings = {
+        team_count: 36,
+        qualification_cutoff_position: 24,
+        source_label: 'tabla de prueba',
+        teams: [
+          { team_id: 'home-1', position, matches_played: 2, points: 0, goal_difference: -4 },
+          { team_id: 'away-1', position: 1, matches_played: 2, points: 6, goal_difference: 5 },
+        ],
+      }
+      const result = parseMatchInput(JSON.stringify(raw))
+      expect(result.ok).toBe(true)
+      if (result.ok) {
+        expect(result.value.match.teams.find(({ side }) => side === 'home')?.urgency).toBe(expected)
+        expect(result.value.match.teams.find(({ side }) => side === 'home')?.urgency_context)
+          .toBe(`puesto ${position}/36, corte 24; fuente tabla de prueba`)
+      }
     }
+  })
+
+  it('keeps manual urgency when standings are absent and rejects invalid standings', () => {
+    const manual = inputWith({}, {})
+    manual.match.teams[0].urgency = 'high'
+    const parsedManual = parseMatchInput(JSON.stringify(manual))
+    expect(parsedManual.ok && parsedManual.value.match.teams[0].urgency).toBe('high')
+
+    const nullUrgency = inputWith({}, {}) as unknown as {
+      match: { teams: [{ urgency?: unknown }, { urgency?: unknown }] }
+    }
+    nullUrgency.match.teams[0].urgency = null
+    expect(parseMatchInput(JSON.stringify(nullUrgency)).ok).toBe(false)
+
+    const invalid = inputWith({}, {})
+    invalid.match.standings = {
+      team_count: 36,
+      qualification_cutoff_position: 37,
+      source_label: 'tabla de prueba',
+      teams: [
+        { team_id: 'home-1', position: 34, matches_played: 2, points: 0, goal_difference: -4 },
+        { team_id: 'away-1', position: 35, matches_played: 2, points: 0, goal_difference: -5 },
+      ],
+    }
+    expect(parseMatchInput(JSON.stringify(invalid)).ok).toBe(false)
+  })
+
+  it('leaves urgency unknown when the team has no played standings row', () => {
+    const raw = inputWith({}, {})
+    raw.match.teams[0].urgency = 'high'
+    raw.match.standings = {
+      team_count: 36,
+      qualification_cutoff_position: 24,
+      source_label: 'tabla de prueba',
+      teams: [
+        { team_id: 'other-home', position: 34, matches_played: 2, points: 0, goal_difference: -4 },
+        { team_id: 'away-1', position: 35, matches_played: 0, points: 0, goal_difference: 0 },
+      ],
+    }
+    const result = parseMatchInput(JSON.stringify(raw))
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.match.teams.find(({ side }) => side === 'home')?.urgency).toBe('unknown')
+      expect(result.value.match.teams.find(({ side }) => side === 'away')?.urgency).toBe('unknown')
+      expect(result.value.match.teams.find(({ side }) => side === 'home')?.urgency_context)
+        .toContain('sin fila en tabla; corte 24/36; fuente tabla de prueba')
+      expect(result.value.match.teams.find(({ side }) => side === 'away')?.urgency_context)
+        .toContain('0 partidos disputados; puesto 35/36, corte 24; fuente tabla de prueba')
+    }
+  })
+
+  it('requires exactly one decimal quota for each simple-win side', () => {
+    const raw = inputWith({}, {}) as { match: Record<string, unknown> }
+    delete raw.match.simple_win_odds
+    const missing = parseMatchInput(JSON.stringify(raw))
+    expect(missing.ok).toBe(false)
+    if (!missing.ok) expect(missing.issues.some(({ path }) => path === '$.match.simple_win_odds')).toBe(true)
+
+    raw.match.simple_win_odds = { home: 2.2, away: 3.1 }
+    expect(parseMatchInput(JSON.stringify(raw)).ok).toBe(true)
+    raw.match.simple_win_odds = { home: 1, away: 3.1 }
+    expect(parseMatchInput(JSON.stringify(raw)).ok).toBe(false)
+  })
+
+  it('acepta el expediente ya enriquecido por el análisis local', () => {
+    const parsed = parseMatchInput(JSON.stringify(inputWith({}, {})))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+    parsed.value.match.teams[0].urgency_context = 'Contexto derivado para reenvío al API'
+    expect(parseMatchInput(JSON.stringify(parsed.value)).ok).toBe(true)
   })
 
   it('rejects quote lists, under selections, and unknown odds fields', () => {
@@ -110,9 +199,8 @@ describe('parser JSON v1', () => {
     expect(parseMatchInput(JSON.stringify(raw)).ok).toBe(false)
 
     delete match.quotes
-    const odds = match.simple_win_odds as Record<string, unknown>
-    odds.total_goals = 2
-    expect(parseMatchInput(JSON.stringify(raw)).ok).toBe(false)
+    match.simple_win_odds = { home: 2.2, away: 3.1 }
+    expect(parseMatchInput(JSON.stringify(raw)).ok).toBe(true)
   })
 
   it('rejects unknown fields, coercions, and markets outside the closed catalog', () => {
@@ -133,6 +221,37 @@ describe('parser JSON v1', () => {
     const outsideCatalog = inputWith({}, {})
     outsideCatalog.match.quotes = [{ quote_id: 'q1', market: 'btts', selection: 'yes', line_value: null, line_unit: 'none', odds_decimal: 2 }]
     expect(parseMatchInput(JSON.stringify(outsideCatalog)).ok).toBe(false)
+  })
+
+  it('determines the Asian-handicap favorite from the lower simple-win quota', () => {
+    const raw = inputWith(
+      { xg: measurement(2.1, 'goals'), xga: measurement(0.8, 'goals') },
+      { xg: measurement(1.7, 'goals'), xga: measurement(1.2, 'goals') },
+    )
+    raw.match.simple_win_odds = { home: 3.1, away: 2.2 }
+    const parsed = parseMatchInput(JSON.stringify(raw))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const candidates = analyzeMatch(parsed.value).markets.find(({ market }) => market === 'asian_handicap')!.candidates
+    expect(candidates.map(({ candidate }) => [candidate.selection, candidate.team_id, candidate.line_value])).toEqual([
+      ['favorite', 'away-1', -1.5],
+      ['nonfavorite', 'home-1', 1.5],
+    ])
+  })
+
+  it('leaves Asian-handicap sides undetermined when simple-win quotas tie', () => {
+    const tiedOdds = inputWith(
+      { xg: measurement(2, 'goals'), xga: measurement(1, 'goals') },
+      { xg: measurement(1.5, 'goals'), xga: measurement(0.5, 'goals') },
+    )
+    tiedOdds.match.simple_win_odds = { home: 2.2, away: 2.2 }
+    const parsed = parseMatchInput(JSON.stringify(tiedOdds))
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      const candidates = analyzeMatch(parsed.value).markets.find(({ market }) => market === 'asian_handicap')!.candidates
+      expect(candidates.every(({ candidate }) => candidate.team_id === null)).toBe(true)
+    }
   })
 
   it('preserves draft text and reports malformed JSON with a location when available', () => {

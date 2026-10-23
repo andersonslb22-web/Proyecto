@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import exampleJson from '../examples/partido.json?raw'
 import { calculateDerivedMetrics, compareObservedMeasurements } from './domain/calculations'
-import { analyzeMatch, type CandidateEvaluation, type MatchAnalysis } from './domain/engine'
+import { analyzeMatch, type CandidateEvaluation, type MatchAnalysis, type RouteEvaluation, type ScoreTrace } from './domain/engine'
 import { issueLocation } from './domain/issueLocation'
 import { parseMatchInput } from './domain/parser'
-import { buildAlternateSummaries } from './domain/routeSummary'
-import { statDefinitions, type DerivedMetric, type MatchInput, type Market, type StatGroup, type ValidationIssue } from './domain/types'
+import { statDefinitions, type Candidate, type DerivedMetric, type MatchInput, type Market, type StatGroup, type ValidationIssue } from './domain/types'
 import { requestJustifications, type Justification } from './services/analysisClient'
 
 type MarketDefinition = {
@@ -22,10 +21,10 @@ const marketDefinitions: MarketDefinition[] = [
     observed: 'Requiere xG y xGA observados en ambos equipos',
   },
   { id: 'double_chance', title: 'Doble oportunidad', selection: '1X / X2', buffer: 'xG neto + localía firmada − rival ≥ 0.15 goles', observed: 'La localía debe estar explícita' },
-  { id: 'asian_handicap_negative', title: 'Hándicap asiático negativo', selection: 'Local / visitante', buffer: 'Goles favor − concedidos rival + ajuste ≥ |línea| + 1.3', observed: 'Ajuste de urgencia ausente = 0 conservador' },
-  { id: 'total_goals', title: 'Goles totales', selection: 'Over / under', buffer: 'Goles o xG combinados; colchón 1.2', observed: 'No se mezclan goles y xG' },
-  { id: 'total_corners', title: 'Córners totales', selection: 'Over / under', buffer: 'Córners combinados; colchón 3.5', observed: 'Los tiros bloqueados no se convierten en córners' },
-  { id: 'team_goals', title: 'Goles por equipo', selection: 'Over / under + equipo', buffer: 'Goles del equipo o xG; colchón 0.8', observed: 'Equipo identificado mediante team_id' },
+  { id: 'asian_handicap', title: 'Hándicap asiático negativo', selection: 'Local / visitante', buffer: 'Goles favor − concedidos rival + ajuste ≥ |línea| + 1.3', observed: 'Ajuste de urgencia ausente = 0 conservador' },
+  { id: 'total_goals', title: 'Goles totales', selection: 'Over', buffer: 'Goles o xG combinados; colchón 1.2', observed: 'No se mezclan goles y xG' },
+  { id: 'total_corners', title: 'Córners totales', selection: 'Over', buffer: 'Córners combinados; colchón 3.5', observed: 'Los tiros bloqueados no se convierten en córners' },
+  { id: 'team_goals', title: 'Goles por equipo', selection: 'Over + equipo', buffer: 'Over 0.5 goles · proyección mínima 1.3 (línea 0.5 + colchón 0.8)', observed: 'Equipo identificado mediante team_id' },
 ]
 
 const modifierDefinitions = [
@@ -39,7 +38,7 @@ const groups: StatGroup[] = ['Ofensiva', 'Ritmo', 'Defensa y portería', 'Fricci
 
 function formatMeasurement(measurement: MatchInput['match']['teams'][number]['stats'][keyof MatchInput['match']['teams'][number]['stats']]) {
   if (measurement.status !== 'observed' || measurement.value === null) {
-    return ({ missing: 'Dato ausente', unknown: 'Desconocido', not_applicable: 'No aplicable', observed: 'No evaluable' } as const)[measurement.status]
+    return ({ missing: 'Dato ausente', estimated: 'Estimado', unknown: 'Desconocido', not_applicable: 'No aplicable', observed: 'No evaluable' } as const)[measurement.status]
   }
   const suffix = measurement.unit === 'goals' ? ' goles' : measurement.unit === 'percent' ? '%' : ''
   return `${measurement.value}${suffix}`
@@ -65,16 +64,13 @@ function formatSampleContext(sample: MatchInput['match']['teams'][number]['sampl
   return `${sample.period.replaceAll('_', ' ')}, ${sample.scope}, ${sample.matches_count ?? 'cantidad de partidos no disponible'} partidos, periodo ${formatSampleRange(sample)}, fuente ${sample.source_label ?? 'no disponible'}`
 }
 
-function formatSelection(quote: MatchInput['match']['quotes'][number]) {
-  if (quote.selection === 'home') return 'Local'
-  if (quote.selection === 'away') return 'Visitante'
-  if (quote.selection === '1X') return '1X'
-  if (quote.selection === 'X2') return 'X2'
-  if (quote.market === 'team_goals') {
-    const team = quote.team_id
-    return `${quote.selection} · ${team ?? 'equipo no disponible'}`
-  }
-  return quote.selection
+function formatSelection(candidate: Candidate, input: MatchInput) {
+  const team = input.match.teams.find(({ team_id }) => team_id === candidate.team_id)
+  if (candidate.market === 'simple_win') return `${candidate.selection === 'home' ? 'Local' : 'Visitante'} · ${team?.name ?? 'equipo no disponible'}`
+  if (candidate.market === 'double_chance') return `${candidate.selection} · ${team?.name ?? 'equipo no disponible'}`
+  if (candidate.market === 'asian_handicap') return `${candidate.selection === 'favorite' ? 'Favorito' : 'No favorito'} · ${team?.name ?? 'no determinado'}`
+  if (candidate.market === 'team_goals') return `Over ${candidate.line_value ?? '0.5'} goles · ${team?.name ?? 'equipo no disponible'}`
+  return `${candidate.selection === 'OVER' ? 'Over' : candidate.selection} ${candidate.line_value ?? ''}`.trim()
 }
 
 function formatDecision(status: CandidateEvaluation['status']) {
@@ -88,50 +84,85 @@ function formatMop(candidate: CandidateEvaluation) {
   return mop === null ? 'No evaluable' : `${mop.toFixed(2)} ${formatUnit(unit)}`
 }
 
-function CandidateResult({ candidate, analysis, justification }: { candidate: CandidateEvaluation; analysis: MatchAnalysis; justification?: string }) {
-  const alternateSummaries = buildAlternateSummaries(candidate, analysis)
-  return <section className="candidate-result" aria-label={`Resultado de ${formatSelection(candidate.quote)}`}>
+function ScoreTraceDetails({ scoreTrace, market }: { scoreTrace: ScoreTrace | null; market: Market }) {
+  const displayedEntries = scoreTrace?.entries.map((entry) => ({
+    ...entry,
+    displayedPoints: Number(entry.scorePoints.toFixed(2)),
+  })) ?? []
+  const displayedFinalScore = scoreTrace ? Number(scoreTrace.finalScore.toFixed(2)) : null
+  const displayRoundingAdjustment = displayedFinalScore === null ? 0
+    : Number((displayedFinalScore - displayedEntries.reduce((sum, entry) => sum + entry.displayedPoints, 0)).toFixed(2))
+  const cornerConfirmation = displayedEntries
+    .filter((entry) => entry.group === 'confirmation')
+    .reduce((sum, entry) => sum + entry.displayedPoints, 0)
+  return <details className="candidate-trace">
+    <summary>Trazabilidad del score</summary>
+    {market === 'total_corners' && <p className="candidate-explanation">
+      Confirmación de córners: {scoreTrace ? `${cornerConfirmation.toFixed(2)}/55` : 'no evaluable'} puntos normalizados. El respaldo usa centros combinados (20), pases en campo contrario (15) y disparos totales (10), hasta 45/45; todos son proxies ofensivos documentados, no córners concedidos.
+    </p>}
+    {scoreTrace
+      ? <>
+        <ul>{displayedEntries.map((entry, index) => {
+          const group = entry.group === 'confirmation' ? 'Confirmación'
+            : entry.group === 'support' ? 'Respaldo'
+              : entry.group === 'limit' ? 'Ajuste de límite' : 'Penalización'
+          const matrix = entry.matrixPoints === undefined ? '' : ` · Matriz ${entry.matrixPoints}/${entry.matrixMaximum}`
+          const points = `${entry.displayedPoints > 0 ? '+' : ''}${entry.displayedPoints.toFixed(2)} puntos`
+          return <li key={`${entry.group}-${entry.label}-${index}`}><strong>{group}:</strong> {entry.label}{matrix} → {points} al score</li>
+        })}</ul>
+        {displayRoundingAdjustment !== 0 && <p className="candidate-explanation">Ajuste de redondeo de presentación: {displayRoundingAdjustment > 0 ? '+' : ''}{displayRoundingAdjustment.toFixed(2)} puntos.</p>}
+        <p className="candidate-score-total">Suma antes del límite: {scoreTrace.rawScore.toFixed(2)} · Score final: <strong>{scoreTrace.finalScore.toFixed(2)}/100</strong></p>
+      </>
+      : <p className="candidate-explanation">No evaluable: faltan métricas para calcular el score.</p>}
+  </details>
+}
+
+function RouteResult({ route, title, input }: { route: RouteEvaluation; title: string; input: MatchInput }) {
+  const traceItems = route.trace.filter((item) => !route.penalties.includes(item))
+  return <section className="candidate-alternate" aria-label={title}>
     <div className="candidate-heading">
-      <strong>{formatSelection(candidate.quote)} · cuota {candidate.quote.odds_decimal}</strong>
+      <strong>{title} · {formatSelection(route.candidate, input)}</strong>
+      <span className={`candidate-state candidate-state-${route.status.toLowerCase()}`}>{formatDecision(route.status)}</span>
+    </div>
+    <dl className="pending-fields">
+      <div><dt>Score / 100</dt><dd>{route.score === null ? 'No evaluable' : route.score.toFixed(2)}</dd></div>
+      <div><dt>Línea</dt><dd>{route.candidate.line_value ?? 'Sin línea'}</dd></div>
+      <div><dt>Gate</dt><dd>{route.gate.status === 'pass' ? 'Pasa' : route.gate.status === 'fail' ? 'Falla' : 'No evaluable'}</dd></div>
+      <div><dt>MOP</dt><dd>{route.gate.mop === null ? 'No evaluable' : `${route.gate.mop.toFixed(2)} ${formatUnit(route.gate.unit)}`}</dd></div>
+    </dl>
+    <p className="candidate-projection">Proyección: {route.gate.projection === null ? 'No evaluable' : `${route.gate.projection.toFixed(2)} ${formatUnit(route.gate.unit)}`} · Umbral: {route.gate.threshold === null ? 'No disponible' : `${route.gate.threshold.toFixed(2)} ${formatUnit(route.gate.unit)}`}</p>
+    <p className="candidate-explanation">{route.gate.explanation}</p>
+    {traceItems.length > 0 && <details className="candidate-trace">
+      <summary>Trazabilidad de la ruta</summary>
+      <ul>{traceItems.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
+    </details>}
+    <ScoreTraceDetails scoreTrace={route.scoreTrace} market={route.candidate.market} />
+  </section>
+}
+
+function CandidateResult({ candidate, input, justification }: { candidate: CandidateEvaluation; input: MatchInput; justification?: string }) {
+  const traceItems = candidate.trace.filter((item) => !candidate.penalties.includes(item))
+  return <section className="candidate-result" aria-label={`Resultado de ${formatSelection(candidate.candidate, input)}`}>
+    <div className="candidate-heading">
+      <strong>{formatSelection(candidate.candidate, input)}</strong>
       <span className={`candidate-state candidate-state-${candidate.status.toLowerCase()}`}>{formatDecision(candidate.status)}</span>
     </div>
     <dl className="pending-fields">
-      <div><dt>Score / 100</dt><dd>{candidate.score === null ? 'No evaluable' : candidate.score.toFixed(1)}</dd></div>
-      <div><dt>Cuota</dt><dd>{candidate.quote.odds_decimal.toFixed(2)}</dd></div>
-      <div><dt>Prob. implícita</dt><dd>{candidate.impliedProbability === null ? 'No evaluable' : `${candidate.impliedProbability.toFixed(1)}%`}</dd></div>
-      <div><dt>+EV estricto</dt><dd>{candidate.expectedValue === null ? 'No evaluable' : candidate.expectedValue ? 'Pasa' : 'No pasa'}</dd></div>
+      <div><dt>Score / 100</dt><dd>{candidate.score === null ? 'No evaluable' : candidate.score.toFixed(2)}</dd></div>
+      <div><dt>Ruta</dt><dd>{candidate.route === 'primary' ? 'Principal' : candidate.route === 'scaled' ? 'Escalada' : candidate.route === 'fallback' ? 'Fallback' : 'Sin fallback'}</dd></div>
       <div><dt>Gate</dt><dd>{candidate.gate.status === 'pass' ? 'Pasa' : candidate.gate.status === 'fail' ? 'Falla' : 'No evaluable'}</dd></div>
       <div><dt>MOP</dt><dd>{formatMop(candidate)}</dd></div>
     </dl>
     <p className="candidate-projection">Proyección: {candidate.gate.projection === null ? 'No evaluable' : `${candidate.gate.projection.toFixed(2)} ${formatUnit(candidate.gate.unit)}`} · Umbral: {candidate.gate.threshold === null ? 'No disponible' : `${candidate.gate.threshold.toFixed(2)} ${formatUnit(candidate.gate.unit)}`}</p>
     <p className="candidate-explanation">{candidate.gate.explanation}</p>
     {justification && <p className="candidate-justification"><span>Justificación cualitativa</span>{justification}</p>}
-    {alternateSummaries.map((alternate) => <section className="candidate-alternate" key={`${alternate.route}-${alternate.quote.quote_id}`} aria-label={`${alternate.route === 'fallback' ? 'Resultado de fallback' : 'Resultado de línea escalada'} para ${alternate.quote.quote_id}`}>
-      <div className="candidate-heading">
-        <strong>{alternate.route === 'fallback' ? 'Fallback cotizado' : 'Línea escalada'} · {formatSelection(alternate.quote)} · línea {alternate.quote.line_value ?? 'sin línea'}</strong>
-        <span className={`candidate-state candidate-state-${alternate.status.toLowerCase()}`}>{formatDecision(alternate.status)}</span>
-      </div>
-      <dl className="pending-fields">
-        <div><dt>Cuota</dt><dd>{alternate.quote.odds_decimal.toFixed(2)}</dd></div>
-        <div><dt>Score / 100</dt><dd>{alternate.score === null ? 'No evaluable' : alternate.score.toFixed(1)}</dd></div>
-        <div><dt>Prob. implícita</dt><dd>{alternate.impliedProbability === null ? 'No evaluable' : `${alternate.impliedProbability.toFixed(1)}%`}</dd></div>
-        <div><dt>Score mínimo +EV</dt><dd>{alternate.requiredScore === null ? 'No evaluable' : alternate.requiredScore.toFixed(1)}</dd></div>
-        <div><dt>+EV estricto</dt><dd>{alternate.expectedValue === null ? 'No evaluable' : alternate.expectedValue ? 'Pasa' : 'No pasa'}</dd></div>
-        <div><dt>Gate</dt><dd>{alternate.gate.status === 'pass' ? 'Pasa' : alternate.gate.status === 'fail' ? 'Falla' : 'No evaluable'}</dd></div>
-        <div><dt>MOP</dt><dd>{alternate.gate.mop === null ? 'No evaluable' : `${alternate.gate.mop.toFixed(2)} ${formatUnit(alternate.gate.unit)}`}</dd></div>
-      </dl>
-      <p className="candidate-projection">Proyección: {alternate.gate.projection === null ? 'No evaluable' : `${alternate.gate.projection.toFixed(2)} ${formatUnit(alternate.gate.unit)}`} · Umbral: {alternate.gate.threshold === null ? 'No disponible' : `${alternate.gate.threshold.toFixed(2)} ${formatUnit(alternate.gate.unit)}`}</p>
-      <p className="candidate-explanation">{alternate.gate.explanation}</p>
-      <p className="candidate-explanation">Penalizaciones: {alternate.penalties.length > 0 ? alternate.penalties.join(' ') : 'Ninguna.'}</p>
-      {alternate.trace.length > 0 && <details className="candidate-trace">
-        <summary>Trazabilidad de la ruta alternativa</summary>
-        <ul>{alternate.trace.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
-      </details>}
-    </section>)}
-    {candidate.trace.length > 0 && <details className="candidate-trace">
+    {candidate.scaled && <RouteResult route={candidate.scaled} title="Línea escalada" input={input} />}
+    {candidate.fallback && <RouteResult route={candidate.fallback} title="Fallback" input={input} />}
+    {traceItems.length > 0 && <details className="candidate-trace">
       <summary>Trazabilidad del motor</summary>
-      <ul>{candidate.trace.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
+      <ul>{traceItems.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}</ul>
     </details>}
+    <ScoreTraceDetails scoreTrace={candidate.scoreTrace} market={candidate.candidate.market} />
   </section>
 }
 
@@ -210,7 +241,7 @@ function App() {
     setAnalysisResult(result)
     setAnalyzed(true)
     setAnalyzing(false)
-    setNotice('Motor determinista local listo. Se muestran gates, score, +EV y trazas disponibles.')
+    setNotice('Motor determinista local listo. Se muestran score, gates y trazas disponibles.')
     requestAnimationFrame(() => resultRef.current?.focus())
   }
 
@@ -237,10 +268,10 @@ function App() {
 
   async function requestEligibleJustifications() {
     if (!validatedInput || !analysisResult) return
-    const eligibleQuoteIds = analysisResult.markets.flatMap(({ candidates }) => candidates)
+    const eligibleCandidateIds = analysisResult.markets.flatMap(({ candidates }) => candidates)
       .filter(({ status }) => status === 'ELIGIBLE')
-      .map(({ quote }) => quote.quote_id)
-    if (eligibleQuoteIds.length === 0) return
+      .map(({ candidate }) => candidate.candidate_id)
+    if (eligibleCandidateIds.length === 0) return
     justificationControllerRef.current?.abort()
     const controller = new AbortController()
     justificationControllerRef.current = controller
@@ -248,7 +279,7 @@ function App() {
     setRequestingJustifications(true)
     setJustificationError('')
     setJustifications({})
-    const result = await requestJustifications(validatedInput, eligibleQuoteIds, controller.signal)
+    const result = await requestJustifications(validatedInput, eligibleCandidateIds, controller.signal)
     if (!mountedRef.current || runId !== justificationRunRef.current) return
     if (justificationControllerRef.current === controller) justificationControllerRef.current = null
     setRequestingJustifications(false)
@@ -382,7 +413,7 @@ function App() {
                   return <span className="stat-value" role="cell" key={team?.team_id ?? definition.key}>
                     {team && <small className="team-stat-side">{team.side === 'home' ? 'LOCAL' : 'VISITANTE'}</small>}
                     {measurement ? formatMeasurement(measurement) : 'No disponible'}
-                    {measurement?.status === 'observed' && measurement.source_label && <small>{measurement.source_label}</small>}
+                    {(measurement?.status === 'observed' || measurement?.status === 'estimated') && measurement.source_label && <small>{measurement.source_label}</small>}
                     {team && home && away && leftMeasurement?.status === 'observed' && rightMeasurement?.status === 'observed' && percent !== null && percent !== undefined && <span
                       className={`paired-bar paired-bar-${team.side}`}
                       role="img"
@@ -411,26 +442,19 @@ function App() {
             <div><p className="eyebrow">04 / EVALUACIÓN</p><h2 id="markets-title">Catálogo permitido</h2></div>
             <span className="catalog-count">06 MERCADOS · SIN EXCEPCIONES</span>
           </div>
-          <p className="market-intro">Cada resultado procede del motor local y queda limitado por sus datos y cuotas observados. Las reglas no completan líneas ni cifras faltantes.</p>
-          <div className="market-grid">{marketDefinitions.map((market, index) => <article className="market-item" key={market.id}>
+          <p className="market-intro">Cada resultado se calcula con las estadísticas observadas del expediente. La cuota de victoria simple solo identifica el favorito; no modifica score, gates ni penalizaciones.</p>
+          <div className="market-grid">{marketDefinitions.map((market, index) => {
+            const marketCandidates = analysisResult?.markets.find(({ market: id }) => id === market.id)?.candidates ?? []
+            return <article className="market-item" key={market.id}>
             <div className="market-top"><span className="market-index">0{index + 1}</span><span className="market-state">{analysisResult?.markets.find(({ market: id }) => id === market.id)?.candidates.some(({ status }) => status === 'ELIGIBLE') ? 'Elegible' : 'Consulta resultados'}</span></div>
             <h3>{market.title}</h3><p className="market-selection">Selecciones del catálogo: {market.selection}</p>
-            <section className="market-quotes" aria-label={`Cotizaciones introducidas para ${market.title}`}>
-              <h4>Cotización introducida</h4>
-              {validatedInput.match.quotes.filter(({ market: quoteMarket }) => quoteMarket === market.id).length > 0
-                ? <div className="quote-list">{validatedInput.match.quotes.filter(({ market: quoteMarket }) => quoteMarket === market.id).map((quote, quoteIndex) => <dl className="quote-details" key={`${quote.quote_id}-${quoteIndex}`}>
-                  <div><dt>Selección</dt><dd>{quote.selection}</dd></div>
-                  <div><dt>Línea</dt><dd>{quote.line_value === null ? 'Sin línea' : `${quote.line_value} ${formatUnit(quote.line_unit)}`}</dd></div>
-                  <div><dt>Cuota decimal</dt><dd>{quote.odds_decimal}</dd></div>
-                </dl>)}</div>
-                : <p>No hay cotización introducida para este mercado.</p>}
-            </section>
             <div className="market-buffer"><span>BUFFER FIJADO</span><strong>{market.buffer}</strong></div>
             <div className="market-observed"><span>DATOS REQUERIDOS</span><strong>{market.observed}</strong></div>
-            {(analysisResult?.markets.find(({ market: id }) => id === market.id)?.candidates ?? []).length > 0
-              ? analysisResult!.markets.find(({ market: id }) => id === market.id)!.candidates.map((candidate) => <CandidateResult key={candidate.quote.quote_id} candidate={candidate} analysis={analysisResult!} justification={justifications[candidate.quote.quote_id]?.narrative} />)
-              : <div className="candidate-result"><strong>No evaluable</strong><p>No hay cuotas introducidas para este mercado.</p></div>}
-          </article>)}</div>
+            {marketCandidates.length > 0
+              ? marketCandidates.map((candidate) => <CandidateResult key={candidate.candidate.candidate_id} candidate={candidate} input={validatedInput} justification={justifications[candidate.candidate.candidate_id]?.narrative} />)
+              : <div className="candidate-result"><strong>No evaluable</strong><p>No se generaron candidatos para este mercado.</p></div>}
+          </article>
+          })}</div>
           <section className="ai-notice" aria-label="Justificaciones cualitativas">
             <span className="ai-symbol" aria-hidden="true">AI</span>
             <div><p className="eyebrow">ANÁLISIS CUALITATIVO</p><h2>{requestingJustifications ? 'Redactando justificaciones' : eligibleCount > 0 ? 'Candidatos elegibles disponibles' : 'Sin candidatos elegibles'}</h2><p>{eligibleCount > 0 ? 'La solicitud es opcional y solo añade texto cualitativo; el motor determinista conserva la decisión.' : 'La solicitud opcional solo está disponible para candidatos elegibles.'}</p></div>
@@ -448,7 +472,7 @@ function App() {
       {!analyzed && <section className="empty-state" aria-label="Sin análisis">
         <div className="empty-glyph" aria-hidden="true">↳</div><div><span className="eyebrow">EN ESPERA</span><p>{validatedInput ? 'Entrada válida. Analiza para ver comparación y mercados.' : 'El comparador aparecerá aquí cuando el expediente sea válido.'}</p></div>
       </section>}
-      {analyzed && <section className="sr-only" ref={resultRef} tabIndex={-1} aria-label="Resultados del análisis">El motor determinista terminó. Revisa el estado, la puntuación, los gates y la trazabilidad de cada cuota ingresada.</section>}
+      {analyzed && <section className="sr-only" ref={resultRef} tabIndex={-1} aria-label="Resultados del análisis">El motor determinista terminó. Revisa el estado, la puntuación, los gates y la trazabilidad de cada candidato.</section>}
       <footer className="page-footer"><span>CUADERNO DE PARTIDO <i>·</i> JSON V1</span><span>Datos manuales · sin persistencia</span></footer>
     </main>
   )

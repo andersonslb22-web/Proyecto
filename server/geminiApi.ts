@@ -2,11 +2,11 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { randomUUID } from 'node:crypto'
 import { analyzeMatch, type CandidateEvaluation } from '../src/domain/engine'
 import { parseMatchInput } from '../src/domain/parser'
-import { statDefinitions, type Market, type MatchInput, type Quote, type StatKey, type Team } from '../src/domain/types'
+import { statDefinitions, type Candidate, type Market, type MatchInput, type StatKey, type Team } from '../src/domain/types'
 
 const MAX_REQUEST_BYTES = 512 * 1024
 const MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024
-const PROVIDER_TIMEOUT_MS = 8_000
+const PROVIDER_TIMEOUT_MS = 30_000
 const RATE_LIMIT = 30
 const RATE_WINDOW_MS = 60_000
 const ALLOWED_LOCAL_ORIGINS = new Set([
@@ -20,7 +20,7 @@ type Metric = {
   metric_id: string
   value: number | null
   unit: string
-  status: 'observed' | 'missing' | 'unknown' | 'not_applicable'
+  status: 'observed' | 'estimated' | 'missing' | 'unknown' | 'not_applicable'
 }
 
 type ProviderCandidate = {
@@ -50,6 +50,13 @@ type ApiOptions = {
   fetchImpl?: typeof fetch
 }
 
+const AUTO_MODEL_CANDIDATES = [
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  'gemini-1.5-flash',
+]
+
 type ApiErrorCode = 'INVALID_REQUEST' | 'PAYLOAD_TOO_LARGE' | 'RATE_LIMITED' | 'UPSTREAM_UNAVAILABLE' | 'UPSTREAM_TIMEOUT' | 'INVALID_MODEL_RESPONSE' | 'INTERNAL_ERROR'
 
 class ApiError extends Error {
@@ -57,6 +64,8 @@ class ApiError extends Error {
     super(message)
   }
 }
+
+class ModelUnavailableError extends Error {}
 
 function writeJson(response: ServerResponse, status: number, value: unknown) {
   response.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
@@ -69,9 +78,21 @@ function writeError(response: ServerResponse, error: ApiError) {
   })
 }
 
-function validLocalOrigin(origin: string | undefined): boolean {
+function validRequestOrigin(origin: string | undefined, request: IncomingMessage): boolean {
   if (!origin) return true
-  return ALLOWED_LOCAL_ORIGINS.has(origin)
+  if (ALLOWED_LOCAL_ORIGINS.has(origin)) return true
+
+  const configuredOrigin = process.env.APP_ORIGIN?.replace(/\/$/, '')
+  if (configuredOrigin && origin === configuredOrigin) return true
+
+  const forwardedHostHeader = request.headers['x-forwarded-host']
+  const forwardedHost = (Array.isArray(forwardedHostHeader) ? forwardedHostHeader[0] : forwardedHostHeader)?.split(',', 1)[0]?.trim()
+  const host = forwardedHost || request.headers.host
+  if (!host) return false
+  const forwardedProtocolHeader = request.headers['x-forwarded-proto']
+  const forwardedProtocol = (Array.isArray(forwardedProtocolHeader) ? forwardedProtocolHeader[0] : forwardedProtocolHeader)?.split(',', 1)[0]?.trim()
+  const protocol = forwardedProtocol || (process.env.NODE_ENV === 'production' ? 'https' : 'http')
+  return origin === `${protocol}://${host}`
 }
 
 function validJsonContentType(contentType: string | undefined): boolean {
@@ -111,47 +132,47 @@ function getMetric(input: MatchInput, side: Team['side'], key: StatKey | 'urgenc
   const measurement = key === 'urgency_adjustment' ? team.urgency_adjustment : team.stats[key]
   return {
     metric_id: metricId(side, key),
-    value: measurement.status === 'observed' ? measurement.value : null,
+    value: measurement.status === 'observed' || measurement.status === 'estimated' ? measurement.value : null,
     unit: measurement.unit,
     status: measurement.status,
   } satisfies Metric
 }
 
-function metricIdsFor(input: MatchInput, quote: Quote): string[] {
+function metricIdsFor(input: MatchInput, candidate: Candidate): string[] {
   const ids = new Set<string>()
   const add = (side: Team['side'], ...keys: StatKey[]) => keys.forEach((key) => ids.add(metricId(side, key)))
   const both = (...keys: StatKey[]) => {
     add('home', ...keys)
     add('away', ...keys)
   }
-  const selectedSide = quote.market === 'team_goals'
-    ? input.match.teams.find(({ team_id }) => team_id === quote.team_id)!.side
-    : quote.market === 'double_chance' ? quote.selection === '1X' ? 'home' : 'away'
-      : quote.market === 'simple_win' || quote.market === 'asian_handicap_negative' ? quote.selection as Team['side'] : null
+  const selectedSide = candidate.team_id
+    ? input.match.teams.find(({ team_id }) => team_id === candidate.team_id)?.side ?? null
+    : candidate.market === 'double_chance' ? candidate.selection === '1X' ? 'home' : 'away'
+      : candidate.market === 'simple_win' ? candidate.selection as Team['side'] : null
   const rivalSide = selectedSide === 'home' ? 'away' : selectedSide === 'away' ? 'home' : null
 
-  if (quote.market === 'simple_win') {
+  if (candidate.market === 'simple_win') {
     add(selectedSide!, 'goals_scored', 'goals_conceded', 'goals_prevented', 'big_chances_missed', 'xg', 'xga')
     add(rivalSide!, 'goals_conceded', 'goals_prevented', 'errors', 'xg', 'xga')
     both('fouls')
-  } else if (quote.market === 'double_chance') {
+  } else if (candidate.market === 'double_chance') {
     add(selectedSide!, 'goals_conceded', 'goals_prevented', 'big_chances_missed', 'xg', 'xga')
     add(rivalSide!, 'goals_conceded', 'errors', 'xg', 'xga')
     both('fouls')
     ids.add('match.home_advantage')
-  } else if (quote.market === 'asian_handicap_negative') {
+  } else if (candidate.market === 'asian_handicap') {
     add(selectedSide!, 'goals_scored', 'goals_conceded', 'big_chances_missed', 'xg')
     add(rivalSide!, 'goals_conceded', 'errors')
     ids.add(metricId(selectedSide!, 'urgency_adjustment'))
     both('fouls')
-  } else if (quote.market === 'total_goals') {
+  } else if (candidate.market === 'total_goals') {
     both('goals_scored', 'xg', 'shots_on_target', 'big_chances_created', 'big_chances_missed', 'goals_conceded', 'errors', 'fouls', 'goals_prevented')
-  } else if (quote.market === 'total_corners') {
+  } else if (candidate.market === 'total_corners') {
     both('corners', 'shots_on_target', 'blocked_shots', 'big_chances_missed', 'fouls')
   } else {
     add(selectedSide!, 'goals_scored', 'xg', 'shots_on_target', 'big_chances_created', 'big_chances_missed')
     add(rivalSide!, 'goals_conceded', 'errors')
-    if (quote.selection === 'over') add(rivalSide!, 'goals_prevented')
+    if (candidate.selection === 'OVER') add(rivalSide!, 'goals_prevented')
     both('fouls')
   }
   return [...ids]
@@ -170,7 +191,7 @@ function metricsFor(input: MatchInput, ids: Set<string>): Metric[] {
   const advantage = input.match.home_advantage
   if (ids.has('match.home_advantage')) metrics.set('match.home_advantage', {
     metric_id: 'match.home_advantage',
-    value: advantage.status === 'observed' ? advantage.value : null,
+    value: advantage.status === 'observed' || advantage.status === 'estimated' ? advantage.value : null,
     unit: advantage.unit,
     status: advantage.status,
   })
@@ -179,18 +200,18 @@ function metricsFor(input: MatchInput, ids: Set<string>): Metric[] {
 
 function buildProviderInput(input: MatchInput, evaluations: CandidateEvaluation[]) {
   const metricIds = new Set<string>()
-  const quoteIds = new Map<string, string>()
+  const candidateIds = new Map<string, string>()
   const candidates: ProviderCandidate[] = evaluations.map((evaluation, index) => {
     const candidateId = `candidate-${String(index + 1).padStart(3, '0')}`
     const gateId = `gate-${String(index + 1).padStart(3, '0')}`
-    const referencedMetricIds = metricIdsFor(input, evaluation.quote)
+    const referencedMetricIds = metricIdsFor(input, evaluation.candidate)
     referencedMetricIds.forEach((id) => metricIds.add(id))
-    quoteIds.set(candidateId, evaluation.quote.quote_id)
+    candidateIds.set(candidateId, evaluation.candidate.candidate_id)
     return {
       candidate_id: candidateId,
-      market: evaluation.quote.market,
-      selection: evaluation.quote.selection,
-      line_value: evaluation.quote.line_value,
+      market: evaluation.candidate.market,
+      selection: evaluation.candidate.selection,
+      line_value: evaluation.candidate.line_value,
       score: evaluation.score!,
       gate_id: gateId,
       gate_status: evaluation.gate.status,
@@ -202,7 +223,7 @@ function buildProviderInput(input: MatchInput, evaluations: CandidateEvaluation[
     }
   })
   return {
-    quoteIds,
+    candidateIds,
     body: {
       contract_version: '1.0',
       metrics: metricsFor(input, metricIds),
@@ -215,16 +236,22 @@ function isStrictObject(value: unknown, keys: string[]): value is Record<string,
   return isRecord(value) && Object.keys(value).length === keys.length && keys.every((key) => key in value)
 }
 
-function parseModelResult(text: string, quoteIds: Map<string, string>, metricIds: Set<string>): ProviderJustification[] {
+function parseProviderJson(text: string): unknown {
+  const trimmed = text.trim()
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)
+  return JSON.parse((fenced ? fenced[1] : trimmed).trim()) as unknown
+}
+
+function parseModelResult(text: string, candidateIds: Map<string, string>, metricIds: Set<string>): ProviderJustification[] {
   let result: unknown
   try {
-    result = JSON.parse(text) as unknown
+    result = parseProviderJson(text)
   } catch {
     throw new ApiError(502, 'INVALID_MODEL_RESPONSE', 'El proveedor devolvió una respuesta no válida; puedes reintentar.')
   }
   if (!isStrictObject(result, ['contract_version', 'justifications'])
     || result.contract_version !== '1.0' || !Array.isArray(result.justifications)
-    || result.justifications.length !== quoteIds.size) {
+    || result.justifications.length !== candidateIds.size) {
     throw new ApiError(502, 'INVALID_MODEL_RESPONSE', 'El proveedor devolvió una respuesta no válida; puedes reintentar.')
   }
 
@@ -232,7 +259,7 @@ function parseModelResult(text: string, quoteIds: Map<string, string>, metricIds
   const normalized: ProviderJustification[] = []
   for (const item of result.justifications) {
     if (!isStrictObject(item, ['candidate_id', 'narrative', 'referenced_metric_ids'])
-      || typeof item.candidate_id !== 'string' || !quoteIds.has(item.candidate_id)
+      || typeof item.candidate_id !== 'string' || !candidateIds.has(item.candidate_id)
       || seenCandidates.has(item.candidate_id) || typeof item.narrative !== 'string'
       || item.narrative.length < 30 || item.narrative.length > 500
       || /\d/.test(item.narrative)
@@ -244,12 +271,12 @@ function parseModelResult(text: string, quoteIds: Map<string, string>, metricIds
     }
     seenCandidates.add(item.candidate_id)
     normalized.push({
-      candidate_id: quoteIds.get(item.candidate_id)!,
+      candidate_id: candidateIds.get(item.candidate_id)!,
       narrative: item.narrative,
       referenced_metric_ids: item.referenced_metric_ids as string[],
     })
   }
-  if (seenCandidates.size !== quoteIds.size) {
+  if (seenCandidates.size !== candidateIds.size) {
     throw new ApiError(502, 'INVALID_MODEL_RESPONSE', 'El proveedor devolvió una respuesta no válida; puedes reintentar.')
   }
   return normalized
@@ -270,12 +297,10 @@ function responseSchema(candidateIds: string[], metricIds: string[]) {
             referenced_metric_ids: { type: 'ARRAY', items: { type: 'STRING', enum: metricIds } },
           },
           required: ['candidate_id', 'narrative', 'referenced_metric_ids'],
-          additionalProperties: false,
         },
       },
     },
     required: ['contract_version', 'justifications'],
-    additionalProperties: false,
   }
 }
 
@@ -327,7 +352,15 @@ async function callGemini(
     throw new ApiError(502, 'UPSTREAM_UNAVAILABLE', 'El servicio de justificación no está disponible; puedes reintentar.')
   }
   if (clientSignal.aborted) throw new ClientDisconnectedError()
-  if (!response.ok) throw new ApiError(502, 'UPSTREAM_UNAVAILABLE', 'El servicio de justificación no está disponible; puedes reintentar.')
+  if (!response.ok) {
+    const upstreamError = await response.clone().json().catch(() => null) as { error?: { message?: unknown } } | null
+    const message = typeof upstreamError?.error?.message === 'string' ? upstreamError.error.message : 'sin detalle'
+    console.warn(`Gemini upstream returned HTTP ${response.status}: ${message}`)
+    if (response.status === 404 || (response.status === 400 && /model|not found|no encontrado/i.test(message))) {
+      throw new ModelUnavailableError()
+    }
+    throw new ApiError(502, 'UPSTREAM_UNAVAILABLE', 'El servicio de justificación no está disponible; puedes reintentar.')
+  }
   let providerText: string
   try {
     if (!response.body) throw new Error('Provider response has no body')
@@ -382,8 +415,8 @@ async function handleJustifications(
     writeError(response, new ApiError(400, 'INVALID_REQUEST', 'Usa POST para solicitar justificaciones.'))
     return
   }
-  if (!validLocalOrigin(request.headers.origin)) {
-    writeError(response, new ApiError(400, 'INVALID_REQUEST', 'Origen no permitido para la API local.'))
+  if (!validRequestOrigin(request.headers.origin, request)) {
+    writeError(response, new ApiError(400, 'INVALID_REQUEST', 'Origen no permitido para esta API.'))
     return
   }
   if (!validJsonContentType(request.headers['content-type'])) {
@@ -410,17 +443,76 @@ async function handleJustifications(
     throw new ApiError(503, 'UPSTREAM_UNAVAILABLE', 'La justificación no está configurada en este servidor.')
   }
   const providerInput = buildProviderInput(parsed.value, eligible)
-  const rawResult = await callGemini(providerInput.body, options.apiKey, options.model, options.fetchImpl, clientSignal)
+  const models = options.model.toLowerCase() === 'auto' || options.model.trim() === ''
+    ? AUTO_MODEL_CANDIDATES
+    : [options.model]
+  let rawResult: string | undefined
+  for (const model of models) {
+    try {
+      rawResult = await callGemini(providerInput.body, options.apiKey, model, options.fetchImpl, clientSignal)
+      break
+    } catch (error) {
+      if (!(error instanceof ModelUnavailableError) || model === models.at(-1)) throw error
+    }
+  }
+  if (!rawResult) {
+    throw new ApiError(502, 'UPSTREAM_UNAVAILABLE', 'No hay un modelo Gemini compatible disponible; puedes reintentar.')
+  }
   if (clientSignal.aborted) throw new ClientDisconnectedError()
   const metricIds = new Set(providerInput.body.metrics.map(({ metric_id }) => metric_id))
-  const justifications = parseModelResult(rawResult, providerInput.quoteIds, metricIds)
+  const justifications = parseModelResult(rawResult, providerInput.candidateIds, metricIds)
   writeJson(response, 200, { contract_version: '1.0', justifications })
+}
+
+let serverlessWindowStartedAt = Date.now()
+let serverlessRequestCount = 0
+
+export function handleGeminiApiRequest(
+  request: IncomingMessage,
+  response: ServerResponse,
+  options: ApiOptions = {},
+) {
+  const resolvedOptions: Required<ApiOptions> = {
+    apiKey: options.apiKey ?? '',
+    model: options.model ?? 'auto',
+    fetchImpl: options.fetchImpl ?? fetch,
+  }
+  const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+  if (url.pathname !== '/api/v1/gemini/justifications') {
+    writeError(response, new ApiError(400, 'INVALID_REQUEST', 'Ruta de API no reconocida.'))
+    return
+  }
+  const now = Date.now()
+  if (now - serverlessWindowStartedAt >= RATE_WINDOW_MS) {
+    serverlessWindowStartedAt = now
+    serverlessRequestCount = 0
+  }
+  serverlessRequestCount += 1
+  if (serverlessRequestCount > RATE_LIMIT) {
+    writeError(response, new ApiError(429, 'RATE_LIMITED', 'Se alcanzó el límite local de solicitudes; inténtalo más tarde.'))
+    request.resume()
+    return
+  }
+  const clientAbortController = new AbortController()
+  const abortOnDisconnect = () => {
+    if (!response.writableEnded) clientAbortController.abort()
+  }
+  response.on('close', abortOnDisconnect)
+  void handleJustifications(request, response, resolvedOptions, clientAbortController.signal)
+    .catch((error: unknown) => {
+      if (clientAbortController.signal.aborted || response.destroyed || response.writableEnded) return
+      if (error instanceof ApiError) writeError(response, error)
+      else if (!(error instanceof ClientDisconnectedError)) {
+        writeError(response, new ApiError(500, 'INTERNAL_ERROR', 'No se pudo completar la solicitud; puedes reintentar.'))
+      }
+    })
+    .finally(() => response.off('close', abortOnDisconnect))
 }
 
 export function createGeminiApiServer(options: ApiOptions = {}): Server {
   const resolvedOptions: Required<ApiOptions> = {
     apiKey: options.apiKey ?? '',
-    model: options.model ?? 'gemini-2.5-flash',
+    model: options.model ?? 'auto',
     fetchImpl: options.fetchImpl ?? fetch,
   }
   let windowStartedAt = Date.now()

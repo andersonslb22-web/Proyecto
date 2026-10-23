@@ -15,7 +15,7 @@ describe('requestJustifications cancellation', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const pending = requestJustifications({} as MatchInput, ['quote-1'], controller.signal)
+    const pending = requestJustifications({} as MatchInput, ['candidate-1'], controller.signal)
     expect(fetchMock.mock.calls[0]?.[1]?.signal).toBe(controller.signal)
     controller.abort()
 
@@ -32,7 +32,7 @@ describe('requestJustifications cancellation', () => {
     const response = { ok: true, json: vi.fn().mockRejectedValue(new DOMException('aborted', 'AbortError')) } as unknown as Response
     vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => response))
 
-    const result = await requestJustifications({} as MatchInput, ['quote-1'])
+    const result = await requestJustifications({} as MatchInput, ['candidate-1'])
 
     expect(result).toEqual({ ok: false, cancelled: true })
     expect(result).not.toHaveProperty('message')

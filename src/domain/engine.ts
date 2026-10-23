@@ -4,10 +4,25 @@ export type GateStatus = 'pass' | 'fail' | 'not_evaluable'
 export type DecisionStatus = 'ELIGIBLE' | 'REJECT' | 'not_evaluable'
 export type EvaluationRoute = 'primary' | 'scaled' | 'fallback' | 'no_fallback'
 
+export type ScoreTraceEntry = {
+  group: 'confirmation' | 'support' | 'penalty' | 'limit'
+  label: string
+  scorePoints: number
+  matrixPoints?: number
+  matrixMaximum?: number
+}
+
+export type ScoreTrace = {
+  entries: ScoreTraceEntry[]
+  rawScore: number
+  finalScore: number
+}
+
 export type RouteEvaluation = {
   candidate: Candidate
   status: DecisionStatus
   score: number | null
+  scoreTrace: ScoreTrace | null
   gate: {
     status: GateStatus
     projection: number | null
@@ -25,6 +40,7 @@ export type CandidateEvaluation = {
   status: DecisionStatus
   route: EvaluationRoute
   score: number | null
+  scoreTrace: ScoreTrace | null
   gate: {
     status: GateStatus
     projection: number | null
@@ -48,7 +64,7 @@ export type MarketResult = {
 export type MatchAnalysis = { markets: MarketResult[] }
 
 type GateProjection = CandidateEvaluation['gate']
-type ScoreBreakdown = { score: number; explanation: string[]; penalties: string[] }
+type ScoreCalculation = { score: number; explanation: string[]; penalties: string[]; trace: ScoreTrace }
 type ScoreFactor = { points: number; max: number; label: string }
 
 const markets: Market[] = [
@@ -58,6 +74,14 @@ const markets: Market[] = [
 
 function observed(measurement: Measurement | undefined): number | null {
   return measurement?.status === 'observed'
+    && typeof measurement.value === 'number'
+    && Number.isFinite(measurement.value)
+    ? measurement.value
+    : null
+}
+
+function numericMeasurement(measurement: Measurement | undefined): number | null {
+  return (measurement?.status === 'observed' || measurement?.status === 'estimated')
     && typeof measurement.value === 'number'
     && Number.isFinite(measurement.value)
     ? measurement.value
@@ -120,7 +144,7 @@ function getProjection(input: MatchInput, candidate: Candidate): GateProjection 
     threshold = candidate.market === 'simple_win' ? 0.4 : 0.15
     if (ownNet === null || rivalNet === null) return unavailableGate('xG neto requiere xG y xGA observados de ambos equipos.', threshold, unit)
     if (candidate.market === 'double_chance') {
-      const advantage = observed(input.match.home_advantage)
+      const advantage = numericMeasurement(input.match.home_advantage)
       if (advantage === null) return unavailableGate('Falta la ventaja local explícita requerida para doble oportunidad.', threshold, unit)
       projection = ownNet + (team!.side === 'home' ? advantage : -advantage) - rivalNet
       explanation = 'xG neto del equipo + ventaja local firmada - xG neto rival.'
@@ -129,7 +153,7 @@ function getProjection(input: MatchInput, candidate: Candidate): GateProjection 
       explanation = 'xG neto del equipo - xG neto rival.'
     }
   } else if (candidate.market === 'asian_handicap') {
-    if (!team || !rival || candidate.line_value === null) return unavailableGate('No se puede determinar el favorito sin dos cuotas simples distintas y válidas.', 1.3, unit)
+    if (!team || !rival || candidate.line_value === null) return unavailableGate('No se puede determinar favorito y no favorito: se requiere xG y xGA observados y distintos para ambos equipos.', 1.3, unit)
     const goals = stat(team, 'goals_scored')
     const conceded = stat(rival, 'goals_conceded')
     const adjustment = observed(team.urgency_adjustment) ?? 0
@@ -197,15 +221,61 @@ function combinedFouls(input: MatchInput): number | null {
   return homeFouls === null || awayFouls === null ? null : homeFouls + awayFouls
 }
 
+function estimateHomeAdvantage(input: MatchInput): Measurement {
+  const home = teamBySide(input, 'home')
+  const away = teamBySide(input, 'away')
+  const homeGoals = stat(home, 'goals_scored')
+  const awayGoals = stat(away, 'goals_scored')
+  const homeConceded = stat(home, 'goals_conceded')
+  const awayConceded = stat(away, 'goals_conceded')
+  if ([homeGoals, awayGoals, homeConceded, awayConceded].some((value) => value === null)) return input.match.home_advantage
+  const seasonSignal = ((homeGoals! - awayGoals!) + (awayConceded! - homeConceded!)) / 4
+  const homeRecent = home.recent_venue_form
+  const awayRecent = away.recent_venue_form
+  const recentValues = [
+    numericMeasurement(homeRecent?.goals_scored), numericMeasurement(homeRecent?.goals_conceded),
+    numericMeasurement(awayRecent?.goals_scored), numericMeasurement(awayRecent?.goals_conceded),
+  ]
+  const recentSignal = recentValues.every((value) => value !== null)
+    ? ((recentValues[0]! - recentValues[1]!) - (recentValues[2]! - recentValues[3]!)) / 10
+    : 0
+  const value = Math.max(0.3, Math.min(0.5, 0.35 + seasonSignal * 0.1 + recentSignal * 0.1))
+  return {
+    value,
+    unit: 'goals',
+    status: 'estimated',
+    source_label: 'Cálculo algorítmico interno basado en rendimiento local/visitante reciente y temporada',
+  }
+}
+
+function ensureHomeAdvantage(input: MatchInput) {
+  if (input.match.home_advantage.status === 'missing' || input.match.home_advantage.value === null) {
+    input.match.home_advantage = estimateHomeAdvantage(input)
+  }
+}
+
 function factor(points: number, max: number, label: string): ScoreFactor {
   return { points, max, label }
+}
+
+function urgencyLabel(label: string, teams: Team[]): string {
+  const contexts = teams
+    .filter((team) => team.urgency_context)
+    .map((team) => `${team.name}: ${team.urgency} (${team.urgency_context})`)
+  return contexts.length ? `${label} · ${contexts.join('; ')}` : label
+}
+
+function urgencyContextTrace(input: MatchInput): string[] {
+  return input.match.teams.flatMap((team) => team.urgency_context
+    ? [`Urgencia ${team.urgency} de ${team.name}: ${team.urgency_context}.`]
+    : [])
 }
 
 function band(value: number, threshold: number, points: number, lowerIsBetter = false): number {
   return lowerIsBetter ? (value <= threshold ? points : 0) : (value >= threshold ? points : 0)
 }
 
-function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection): ScoreBreakdown | null {
+function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection): ScoreCalculation | null {
   const home = teamBySide(input, 'home')
   const away = teamBySide(input, 'away')
   const chosen = candidateTeam(input, candidate)
@@ -228,7 +298,7 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
     const urgencyPoints = scoring.urgency === 'high' ? 10 : 0
     confirmation = [
       factor(band(scored! - conceded!, 0.6, 20, false) || band(scored! - conceded!, 0.2, 10, false), 20, 'Diferencial de goles'),
-      factor(urgencyPoints, 10, 'Urgencia alta'),
+      factor(urgencyPoints, 10, urgencyLabel('Urgencia alta', [scoring])),
       factor(band(prevented!, 1, 20, false), 20, 'Goles evitados propios'),
     ]
     support = [
@@ -248,7 +318,7 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
     const urgencyPoints = scoring.urgency === 'high' ? 10 : scoring.urgency === 'medium' ? 5 : 0
     confirmation = [
       factor(gate.status === 'pass' ? 20 : 0, 20, 'Gate de resistencia'),
-      factor(urgencyPoints, 10, 'Urgencia'),
+      factor(urgencyPoints, 10, urgencyLabel('Urgencia', [scoring])),
       factor(band(conceded!, 0.9, 12, true), 12, 'Goles concedidos propios'),
       factor(band(prevented!, 1, 13, false), 13, 'Goles evitados propios'),
     ]
@@ -268,7 +338,7 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
     const xgMargin = xg! + candidate.line_value - rivalConceded!
     confirmation = [
       factor(xgMargin >= 1.5 ? 20 : xgMargin >= 0.8 ? 10 : 0, 20, 'xG candidato + hándicap - goles concedidos rival'),
-      factor(urgencyPoints, 10, 'Urgencia alta'),
+      factor(urgencyPoints, 10, urgencyLabel('Urgencia alta', [chosen])),
       factor(band(ownConceded!, 0.9, 20, true), 20, 'Goles concedidos propios'),
     ]
     support = [
@@ -298,7 +368,7 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
     confirmation = [
       factor(volume >= 3.2 ? 25 : 0, 25, 'Volumen combinado de goles/xG'),
       factor(shotsReady ? 15 : 0, 15, 'Tiros a puerta y grandes ocasiones'),
-      factor(urgency, 15, 'Urgencia alta'),
+      factor(urgency, 15, urgencyLabel('Urgencia alta', [home, away])),
     ]
     support = [
       factor(Math.max(homeConceded!, awayConceded!) >= 1.2 ? 25 : 0, 25, 'Goles concedidos'),
@@ -326,7 +396,7 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
     confirmation = [
       factor(productive ? 25 : modest ? 15 : 0, 25, 'Goles y xG del equipo'),
       factor(volume ? 15 : 0, 15, 'Tiros a puerta y grandes ocasiones'),
-      factor(urgency, 15, 'Urgencia alta'),
+      factor(urgency, 15, urgencyLabel('Urgencia alta', [scoring])),
     ]
     support = [
       factor(rivalConceded! >= 1.2 ? 25 : rivalConceded! >= 0.8 ? 12 : 0, 25, 'Goles concedidos por el rival'),
@@ -339,14 +409,28 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
     const awayShots = stat(away, 'shots_on_target')
     const homeBlocked = stat(home, 'blocked_shots')
     const awayBlocked = stat(away, 'blocked_shots')
-    if ([homeShots, awayShots, homeBlocked, awayBlocked].some((value) => value === null)) return null
+    const homeCrosses = stat(home, 'crosses')
+    const awayCrosses = stat(away, 'crosses')
+    const homeOppositionPasses = stat(home, 'passes_opposition_half')
+    const awayOppositionPasses = stat(away, 'passes_opposition_half')
+    const homeTotalShots = stat(home, 'shots_total')
+    const awayTotalShots = stat(away, 'shots_total')
+    if ([homeShots, awayShots, homeBlocked, awayBlocked, homeCrosses, awayCrosses,
+      homeOppositionPasses, awayOppositionPasses, homeTotalShots, awayTotalShots].some((value) => value === null)) return null
     const projectedPass = gate.status === 'pass'
     const shotVolume = homeShots! + awayShots! + homeBlocked! + awayBlocked! >= 10
+    const crossesReady = homeCrosses! + awayCrosses! >= 10
+    const territorialPressure = homeOppositionPasses! + awayOppositionPasses! >= 350
+    const totalShotVolume = homeTotalShots! + awayTotalShots! >= 30
     confirmation = [
       factor(projectedPass ? 30 : 0, 30, 'Proyección supera el gate de córners'),
       factor(shotVolume ? 25 : 0, 25, 'Tiros a puerta + bloqueados'),
     ]
-    support = []
+    support = [
+      factor(crossesReady ? 20 : 0, 20, 'Centros combinados'),
+      factor(territorialPressure ? 15 : 0, 15, 'Pases combinados en campo contrario'),
+      factor(totalShotVolume ? 10 : 0, 10, 'Disparos totales combinados'),
+    ]
     missedTeams = [home, away]
   }
 
@@ -356,26 +440,24 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
   const supportMaximum = support.reduce((sum, item) => sum + item.max, 0)
   const confirmWeight = 55
   const supportWeight = 45
-  let confirmationScore = confirmMaximum ? confirmation.reduce((sum, item) => sum + item.points, 0) * confirmWeight / confirmMaximum : 0
-  const supportScore = supportMaximum ? support.reduce((sum, item) => sum + item.points, 0) * supportWeight / supportMaximum : 0
   const penalties: string[] = []
+  const penaltyEntries: ScoreTraceEntry[] = []
   const missed = missedTeams.map((team) => stat(team, 'big_chances_missed'))
   if (missed.some((value) => value === null)) return null
   if (missed.reduce<number>((sum, value) => sum + (value ?? 0), 0) >= 2) {
-    confirmationScore -= 10
     penalties.push('Ocasiones claras falladas >= 2.0: -10 al subtotal normalizado de confirmación.')
+    penaltyEntries.push({ group: 'penalty', label: 'Ocasiones claras falladas >= 2.0', scorePoints: -10 })
   }
-  let directPenalty = 0
   if (foulTotal >= 26) {
-    directPenalty += 5
     penalties.push('Faltas combinadas >= 26: -5 puntos.')
+    penaltyEntries.push({ group: 'penalty', label: 'Faltas combinadas >= 26', scorePoints: -5 })
   }
   const structuralCount = input.match.teams.flatMap((team) => team.structural_absences)
     .filter((absence) => absence.is_structural === true && absence.starter === true && absence.confirmation === 'confirmed').length
   const absencePenalty = Math.min(structuralCount * 10, 25)
   if (absencePenalty > 0) {
-    directPenalty += absencePenalty
     penalties.push(`${structuralCount} baja(s) titular(es) estructural(es) confirmada(s), tope aplicado: -${absencePenalty}.`)
+    penaltyEntries.push({ group: 'penalty', label: `${structuralCount} baja(s) titular(es) estructural(es), tope aplicado`, scorePoints: -absencePenalty })
   }
   const goalkeeperPenaltyApplies = candidate.market === 'simple_win'
     || candidate.market === 'total_goals'
@@ -384,17 +466,42 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
     const prevented = stat(goalkeeper, 'goals_prevented')
     if (prevented === null) return null
     if (prevented >= 1.2) {
-      directPenalty += 15
       penalties.push(`Goles evitados del portero rival >= 1.20: -15 puntos (${goalkeeper.name}).`)
+      penaltyEntries.push({ group: 'penalty', label: `Goles evitados del portero rival >= 1.20 (${goalkeeper.name})`, scorePoints: -15 })
     }
   }
   explanation = [
     ...confirmation.map((item) => `Confirmación: ${item.label} ${item.points}/${item.max}.`),
     ...support.map((item) => `Respaldo: ${item.label} ${item.points}/${item.max}.`),
   ]
-  const score = Math.max(0, Math.min(100, confirmationScore + supportScore - directPenalty))
+  const entries: ScoreTraceEntry[] = [
+    ...confirmation.map((item) => ({
+      group: 'confirmation' as const,
+      label: item.label,
+      scorePoints: confirmMaximum ? item.points * confirmWeight / confirmMaximum : 0,
+      matrixPoints: item.points,
+      matrixMaximum: item.max,
+    })),
+    ...support.map((item) => ({
+      group: 'support' as const,
+      label: item.label,
+      scorePoints: supportMaximum ? item.points * supportWeight / supportMaximum : 0,
+      matrixPoints: item.points,
+      matrixMaximum: item.max,
+    })),
+    ...penaltyEntries,
+  ]
+  const rawScore = entries.reduce((sum, item) => sum + item.scorePoints, 0)
+  const score = Math.max(0, Math.min(100, rawScore))
+  if (score !== rawScore) {
+    entries.push({
+      group: 'limit',
+      label: score === 0 ? 'Límite inferior del score' : 'Límite superior del score',
+      scorePoints: score - rawScore,
+    })
+  }
   if (!Number.isFinite(score)) return null
-  return { score, explanation, penalties }
+  return { score, explanation, penalties, trace: { entries, rawScore, finalScore: score } }
 }
 
 export function mopScalingLevels(mop: number): number {
@@ -407,8 +514,9 @@ export function mopScalingLevels(mop: number): number {
 function generatedCandidates(input: MatchInput): Candidate[] {
   const home = teamBySide(input, 'home')
   const away = teamBySide(input, 'away')
-  const { home: homeOdds, away: awayOdds } = input.match.simple_win_odds
-  const favoriteSide = homeOdds === null || awayOdds === null || homeOdds === awayOdds ? null : homeOdds < awayOdds ? 'home' : 'away'
+  const favoriteSide = input.match.simple_win_odds.home === input.match.simple_win_odds.away
+    ? null
+    : input.match.simple_win_odds.home < input.match.simple_win_odds.away ? 'home' : 'away'
   const favorite = favoriteSide ? teamBySide(input, favoriteSide) : null
   const dog = favorite ? input.match.teams.find(({ team_id }) => team_id !== favorite.team_id)! : null
   const create = (market: Market, selection: Candidate['selection'], teamId: string | null, line: number | null, unit: Candidate['line_unit'], key = teamId ?? selection): Candidate => ({
@@ -441,23 +549,27 @@ function candidateWithLine(source: Candidate, line: number): Candidate {
 function evaluate(input: MatchInput, candidate: Candidate): CandidateEvaluation {
   const result: CandidateEvaluation = {
     candidate, status: 'not_evaluable', route: 'primary', score: null,
+    scoreTrace: null,
     gate: unavailableGate('No se pudo calcular el colchón.', null, candidate.line_unit),
     scoreExplanation: [], penalties: [], trace: [],
     scaled: null, fallback: null,
   }
   const sampleError = validSamples(input)
   if (sampleError) {
+    result.trace.push(...urgencyContextTrace(input))
     result.trace.push(sampleError)
     return result
   }
   result.gate = getProjection(input, candidate)
   const breakdown = scoreFor(input, candidate, result.gate)
   if (!breakdown) {
+    result.trace.push(...urgencyContextTrace(input))
     result.trace.push('Faltan métricas observadas para calcular la matriz de score o sus penalizaciones.')
     if (result.gate.status === 'not_evaluable') result.trace.push(result.gate.explanation)
     return result
   }
   result.score = breakdown.score
+  result.scoreTrace = breakdown.trace
   result.scoreExplanation = breakdown.explanation
   result.penalties = breakdown.penalties
   result.trace.push(...breakdown.explanation, ...breakdown.penalties)
@@ -489,6 +601,7 @@ function dcFallback(input: MatchInput, candidates: Candidate[]): Candidate | nul
 }
 
 export function analyzeMatch(input: MatchInput): MatchAnalysis {
+  ensureHomeAdvantage(input)
   const candidates = generatedCandidates(input)
   const results = markets.map((market) => ({
     market,

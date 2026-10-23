@@ -6,6 +6,7 @@ export const statDefinitions = [
   { key: 'shots_on_target', label: 'Tiros a puerta', group: 'Ofensiva', unit: 'count' },
   { key: 'shots_off_target', label: 'Disparos desviados', group: 'Ofensiva', unit: 'count' },
   { key: 'blocked_shots', label: 'Tiros bloqueados', group: 'Ofensiva', unit: 'count' },
+  { key: 'crosses', label: 'Centros por partido', group: 'Ofensiva', unit: 'count' },
   { key: 'big_chances_created', label: 'Grandes ocasiones creadas', group: 'Ofensiva', unit: 'count' },
   { key: 'big_chances_missed', label: 'Ocasiones claras falladas', group: 'Ofensiva', unit: 'count' },
   { key: 'possession_pct', label: 'Posesión', group: 'Ritmo', unit: 'percent' },
@@ -24,7 +25,7 @@ export const statDefinitions = [
 
 export type StatKey = (typeof statDefinitions)[number]['key']
 export type StatGroup = (typeof statDefinitions)[number]['group']
-export type MeasurementStatus = 'observed' | 'missing' | 'unknown' | 'not_applicable'
+export type MeasurementStatus = 'observed' | 'estimated' | 'missing' | 'unknown' | 'not_applicable'
 export type Measurement = {
   value: number | null
   unit: string
@@ -45,15 +46,39 @@ export type StructuralAbsence = {
   starter: boolean | null
   confirmation: 'confirmed' | 'unconfirmed' | 'unknown'
 }
+export type RecentVenueForm = {
+  sample: Sample
+  goals_scored: Measurement
+  goals_conceded: Measurement
+}
 export type Team = {
   team_id: string
   name: string
   side: 'home' | 'away'
   sample: Sample
   urgency: 'low' | 'medium' | 'high' | 'unknown'
+  urgency_context?: string
   urgency_adjustment: Measurement
+  recent_venue_form?: RecentVenueForm
   structural_absences: StructuralAbsence[]
   stats: Record<StatKey, Measurement>
+}
+export type StandingsTeam = {
+  team_id: string
+  position: number
+  matches_played: number
+  points: number
+  goal_difference: number
+}
+export type MatchStandings = {
+  team_count: number
+  qualification_cutoff_position: number
+  source_label: string | null
+  teams: StandingsTeam[]
+}
+export type SimpleWinOdds = {
+  home: number
+  away: number
 }
 export type Market =
   | 'simple_win'
@@ -76,8 +101,9 @@ export type Match = {
   competition: string | null
   kickoff: string | null
   teams: [Team, Team]
+  simple_win_odds: SimpleWinOdds
+  standings?: MatchStandings
   home_advantage: Measurement
-  simple_win_odds: { home: number | null; away: number | null }
 }
 export type MatchInput = { schema_version: '1.0'; match: Match }
 export type ValidationIssue = {

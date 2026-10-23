@@ -4,6 +4,7 @@
     "match_id": "LILLE-GALATASARAY-UEFA-CHAMPIONS-LEAGUE-2026-10-21",
     "competition": "Fútbol · UEFA Champions League · Ronda 3",
     "kickoff": null,
+    "simple_win_odds": { "home": 2.2, "away": 3.1 },
     "teams": [
       {
         "team_id": "lille",
@@ -17,8 +18,12 @@
           "scope": "all",
           "source_label": "Partido.txt · Estadísticas Lille · Ligue 1 26/27"
         },
-        "urgency": "unknown",
         "urgency_adjustment": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
+        "recent_venue_form": {
+          "sample": { "period": "last_n_matches", "matches_count": 5, "from": null, "to": null, "scope": "home", "source_label": "Partido.txt · Últimos partidos: Lille como Local" },
+          "goals_scored": { "value": 1.6, "unit": "goals", "status": "observed", "source_label": "Partido.txt · Últimos partidos: Lille como Local" },
+          "goals_conceded": { "value": 1.0, "unit": "goals", "status": "observed", "source_label": "Partido.txt · Últimos partidos: Lille como Local" }
+        },
         "structural_absences": [
           { "absence_id": "lille-igamane-h", "is_structural": null, "starter": null, "confirmation": "confirmed" },
           { "absence_id": "lille-mbappe-e", "is_structural": null, "starter": null, "confirmation": "confirmed" },
@@ -33,6 +38,7 @@
           "shots_on_target": { "value": 5.4, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Tiros a puerta por partido" },
           "shots_off_target": { "value": 4.3, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Disparos desviados por partido" },
           "blocked_shots": { "value": 2.6, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Disparos bloqueados por partido" },
+          "crosses": { "value": 4.3, "unit": "count", "status": "observed", "source_label": "Partido.txt · Pases · Centros realizados por partido" },
           "big_chances_created": { "value": 2.6, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Grandes ocasiones por partido" },
           "big_chances_missed": { "value": 1.7, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Grandes ocasiones falladas por partido" },
           "possession_pct": { "value": 50.1, "unit": "percent", "status": "observed", "source_label": "Partido.txt · Pases · Posesión de pelota" },
@@ -61,8 +67,12 @@
           "scope": "all",
           "source_label": "Partido.txt · Estadísticas Galatasaray · Trendyol Süper Lig 26/27"
         },
-        "urgency": "unknown",
         "urgency_adjustment": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
+        "recent_venue_form": {
+          "sample": { "period": "last_n_matches", "matches_count": 5, "from": null, "to": null, "scope": "away", "source_label": "Partido.txt · Últimos partidos: Galatasaray como Visitante" },
+          "goals_scored": { "value": 1.6, "unit": "goals", "status": "observed", "source_label": "Partido.txt · Últimos partidos: Galatasaray como Visitante" },
+          "goals_conceded": { "value": 2.4, "unit": "goals", "status": "observed", "source_label": "Partido.txt · Últimos partidos: Galatasaray como Visitante" }
+        },
         "structural_absences": [
           { "absence_id": "galatasaray-aydin-e", "is_structural": null, "starter": null, "confirmation": "confirmed" },
           { "absence_id": "galatasaray-ayhan-k", "is_structural": null, "starter": null, "confirmation": "confirmed" },
@@ -80,6 +90,7 @@
           "shots_on_target": { "value": 7.6, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Tiros a puerta por partido" },
           "shots_off_target": { "value": 9.6, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Disparos desviados por partido" },
           "blocked_shots": { "value": 5.1, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Disparos bloqueados por partido" },
+          "crosses": { "value": 6.9, "unit": "count", "status": "observed", "source_label": "Partido.txt · Pases · Centros realizados por partido" },
           "big_chances_created": { "value": 4.1, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Grandes ocasiones por partido" },
           "big_chances_missed": { "value": 3.1, "unit": "count", "status": "observed", "source_label": "Partido.txt · Ataque · Grandes ocasiones falladas por partido" },
           "possession_pct": { "value": 60.3, "unit": "percent", "status": "observed", "source_label": "Partido.txt · Pases · Posesión de pelota" },
@@ -97,7 +108,15 @@
         }
       }
     ],
-    "home_advantage": { "value": null, "unit": "goals", "status": "missing", "source_label": null },
-    "simple_win_odds": { "home": 2.20, "away": 3.10 }
+    "standings": {
+      "team_count": 36,
+      "qualification_cutoff_position": 24,
+      "source_label": "Partido.txt · Clasificación UEFA Champions League · tras 2 jornadas",
+      "teams": [
+        { "team_id": "lille", "position": 34, "matches_played": 2, "points": 0, "goal_difference": -4 },
+        { "team_id": "galatasaray", "position": 35, "matches_played": 2, "points": 0, "goal_difference": -5 }
+      ]
+    },
+    "home_advantage": { "value": null, "unit": "goals", "status": "missing", "source_label": null }
   }
 }
