@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { handleGeminiApiRequest } from '../../../server/geminiApi'
+import { handleGeminiApiRequest } from '../../../../server/geminiApi'
 
 export default function handler(request: IncomingMessage, response: ServerResponse) {
   handleGeminiApiRequest(request, response, {
