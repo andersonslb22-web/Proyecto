@@ -240,8 +240,8 @@ describe('POST /api/v1/gemini/justifications', () => {
     })
     expect(response.status).toBe(200)
     expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(String(fetchMock.mock.calls[0][0])).toContain('/gemini-2.5-flash:generateContent')
-    expect(String(fetchMock.mock.calls[1][0])).toContain('/gemini-2.0-flash:generateContent')
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/gemini-3.8-flash:generateContent')
+    expect(String(fetchMock.mock.calls[1][0])).toContain('/gemini-3.5-flash-lite:generateContent')
   })
 
   it('mapea timeout y errores del proveedor a errores seguros', async () => {
