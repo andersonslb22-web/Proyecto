@@ -244,6 +244,31 @@ describe('POST /api/v1/gemini/justifications', () => {
     expect(String(fetchMock.mock.calls[1][0])).toContain('/gemini-3.5-flash-lite:generateContent')
   })
 
+  it('prueba el siguiente modelo cuando Gemini devuelve alta demanda temporal', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { message: 'This model is currently experiencing high demand.' } }), { status: 503 }))
+      .mockImplementationOnce(async (_url, init) => {
+        const request = JSON.parse(String(init?.body))
+        const payload = JSON.parse(request.contents[0].parts[0].text)
+        return providerResponse({
+          contract_version: '1.0',
+          justifications: payload.eligible_candidates.map(({ candidate_id }: { candidate_id: string }) => ({
+            candidate_id,
+            narrative: 'El perfil refleja señales estadísticas consistentes en los aspectos ofensivos y defensivos observados.',
+            referenced_metric_ids: payload.metrics.slice(0, 1).map(({ metric_id }: { metric_id: string }) => metric_id),
+          })),
+        })
+      })
+    const url = await startApi({ apiKey: 'synthetic-key', model: 'auto', fetchImpl: fetchMock })
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ input: syntheticInput(true) }),
+    })
+    expect(response.status).toBe(200)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
   it('mapea timeout y errores del proveedor a errores seguros', async () => {
     const timeoutUrl = await startApi({ apiKey: 'synthetic-key', fetchImpl: vi.fn<typeof fetch>(async () => { throw new DOMException('timeout', 'TimeoutError') }) })
     const timeoutResponse = await fetch(timeoutUrl, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ input: syntheticInput(true) }) })

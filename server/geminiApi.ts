@@ -354,7 +354,9 @@ async function callGemini(
     const upstreamError = await response.clone().json().catch(() => null) as { error?: { message?: unknown } } | null
     const message = typeof upstreamError?.error?.message === 'string' ? upstreamError.error.message : 'sin detalle'
     console.warn(`Gemini upstream returned HTTP ${response.status}: ${message}`)
-    if (response.status === 404 || (response.status === 400 && /model|not found|no encontrado/i.test(message))) {
+    if (response.status === 404
+      || (response.status === 400 && /model|not found|no encontrado/i.test(message))
+      || (response.status === 503 && /high demand|temporarily|currently experiencing/i.test(message))) {
       throw new ModelUnavailableError()
     }
     throw new ApiError(502, 'UPSTREAM_UNAVAILABLE', 'El servicio de justificación no está disponible; puedes reintentar.')
@@ -450,7 +452,10 @@ async function handleJustifications(
       rawResult = await callGemini(providerInput.body, options.apiKey, model, options.fetchImpl, clientSignal)
       break
     } catch (error) {
-      if (!(error instanceof ModelUnavailableError) || model === models.at(-1)) throw error
+      if (!(error instanceof ModelUnavailableError)) throw error
+      if (model === models.at(-1)) {
+        throw new ApiError(503, 'UPSTREAM_UNAVAILABLE', 'Los modelos Gemini disponibles están temporalmente ocupados; puedes reintentar.')
+      }
     }
   }
   if (!rawResult) {
