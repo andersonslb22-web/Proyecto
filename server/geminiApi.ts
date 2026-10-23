@@ -1,8 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { analyzeMatch, type CandidateEvaluation } from '../src/domain/engine'
-import { parseMatchInput } from '../src/domain/parser'
-import { statDefinitions, type Candidate, type Market, type MatchInput, type StatKey, type Team } from '../src/domain/types'
+import { analyzeMatch, type CandidateEvaluation } from '../src/domain/engine.js'
+import { parseMatchInput } from '../src/domain/parser.js'
+import { statDefinitions, type Candidate, type Market, type MatchInput, type StatKey, type Team } from '../src/domain/types.js'
 
 const MAX_REQUEST_BYTES = 512 * 1024
 const MAX_PROVIDER_RESPONSE_BYTES = 64 * 1024

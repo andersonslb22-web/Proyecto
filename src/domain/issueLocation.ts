@@ -1,4 +1,4 @@
-import type { ValidationIssue } from './types'
+import type { ValidationIssue } from './types.js'
 
 export function issueLocation(issue: ValidationIssue, text: string): string {
   const teamPath = issue.path.match(/^\$\.match\.teams\[(\d+)\](?:\.|$)/)

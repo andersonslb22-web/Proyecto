@@ -1,4 +1,4 @@
-import type { CandidateEvaluation, RouteEvaluation } from './engine'
+import type { CandidateEvaluation, RouteEvaluation } from './engine.js'
 
 export type AlternateEvaluationSummary = {
   route: 'scaled' | 'fallback'

@@ -1,4 +1,4 @@
-import { type DerivedMetric, type MatchInput, type Measurement, type Sample, type StatKey, type Team } from './types'
+import { type DerivedMetric, type MatchInput, type Measurement, type Sample, type StatKey, type Team } from './types.js'
 
 function observed(measurement: Measurement): measurement is Measurement & { value: number; status: 'observed' } {
   return measurement.status === 'observed' && typeof measurement.value === 'number' && Number.isFinite(measurement.value)

@@ -10,7 +10,7 @@ import {
   type StatKey,
   type Team,
   type ValidationIssue,
-} from './types'
+} from './types.js'
 
 type ParseResult =
   | { ok: true; value: MatchInput; issues: [] }

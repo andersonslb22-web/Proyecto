@@ -1,4 +1,4 @@
-import type { Candidate, MatchInput, Market, Measurement, Team } from './types'
+import type { Candidate, MatchInput, Market, Measurement, Team } from './types.js'
 
 export type GateStatus = 'pass' | 'fail' | 'not_evaluable'
 export type DecisionStatus = 'ELIGIBLE' | 'REJECT' | 'not_evaluable'
