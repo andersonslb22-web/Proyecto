@@ -1,6 +1,6 @@
 # 🚩 Algoritmo de Colchón Dinámico para Córners (Colchón Base +3.5)
 
-Este documento define la arquitectura lógica, matemática y secuencial para la evaluación del mercado de **Córners (Over/Under)** utilizando un **Colchón de Varianza Base de +3.5** e incorporando el motor dinámico de fricción, evaluador +EV y mecanismos de fallback.
+Este documento conserva una propuesta histórica para el mercado de córners. **La regla ejecutable vigente está en `docs/CONTRATO_TECNICO.md`**: el motor solo genera `OVER`, no calcula +EV y no usa cuotas. La matriz de score vigente y los proxies de respaldo se aclaran en el Paso 4; los porcentajes y recomendaciones históricos de las secciones restantes no deben interpretarse como resultados actuales del motor.
 
 ## 🛡️ 1. Definición de la Línea Blindada
 
@@ -88,19 +88,27 @@ El colchón estándar de $+3.5$ se ajusta automáticamente incrementando la exig
 
 ---
 
-### Paso 4: Matriz de Puntuación y Filtro Financiero de Valor Esperado (+EV)
+### Paso 4: Matriz de Puntuación Vigente y Notas Históricas
 
-#### A. Matriz de Puntuación Ponderada (Hasta 100 Pts)
-* **Volumen Ofensivo y Disparos (Confirmación):** 50 pts
-* **Juego por Bandas y Tendencia H2H (Respaldo):** 50 pts
-* **Restas por Fricción o Bajas de Extremos:** Hasta -20 pts
+#### A. Puntuación vigente en el motor
 
-#### B. Evaluador +EV
-$$
-\text{Filtro +EV:} \quad \text{Score de Confianza (\%)} > \left(\frac{1}{\text{Cuota}}\right) + 5\%
-$$
+El motor actual aplica una ponderación global `55/45`: 55 puntos normalizados para confirmación y 45 para respaldo. En `total_corners`, la matriz implementada es:
 
-* *Ejemplo para Over 7.5 Córners a Cuota $1.85$ (Probabilidad Implícita: $54.0\%$):* Score Mínimo Requerido = **$59.0\%$**.
+| Grupo | Factor | Puntos de matriz | Aporte máximo al score |
+|---|---|---:|---:|
+| Confirmación | La proyección supera el gate de córners | 30/30 | 30 puntos normalizados |
+| Confirmación | Tiros a puerta + bloqueados combinados `>= 10` | 25/25 | 25 puntos normalizados |
+| Respaldo | Centros combinados `>=10` | 20/20 | 20 puntos normalizados |
+| Respaldo | Pases en campo contrario combinados `>=350` | 15/15 | 15 puntos normalizados |
+| Respaldo | Disparos totales combinados `>=30` | 10/10 | 10 puntos normalizados |
+
+**Respuesta sobre el respaldo:** el algoritmo actual sí asigna hasta 45 puntos de respaldo usando estos proxies ofensivos disponibles. No son córners concedidos ni ataques peligrosos directos; se muestran separados para no confundirlos con una medición defensiva. Con todos los umbrales, la confirmación suma `55/55` y el respaldo `45/45`, antes de penalizaciones.
+
+La traza del score muestra cada factor, sus puntos de matriz y su aporte normalizado. Si faltan métricas necesarias, el score y su traza quedan como no evaluables; no se rellenan puntos.
+
+#### B. Reglas históricas no usadas por el motor actual
+
+Las referencias de versiones anteriores a una matriz `50/50`, “juego por bandas”, tendencia H2H, penalizaciones de extremos y filtro financiero `+EV` no forman parte del cálculo actual de córners. El motor no consume cuotas ni calcula +EV.
 
 ---
 
@@ -112,19 +120,18 @@ $$
 * **Suma Real Combinada Ajustada:** `11.0` (Supera filtro de entrada de 10.0)
 * **Margen MOP Calculado:** `+1.0` (Mapeado hacia Over 7.5 Córners)
 * **Penalizaciones por Fricción/Bajas:** `0 pts` (Compatibilidad de bandas completa)
-* **Score de Confianza Neto:** `92%`
-* **Evaluación +EV (Cuota 1.85 en Over 7.5):** `92% > 59.0%` $\rightarrow$ 🟢 **APROBADO CON VALOR ELEVADO**
+* **Score de confianza y +EV:** los valores `92%` y `92% > 59.0%` de la versión histórica no son resultados del motor actual. El score vigente se calcula con la matriz indicada en el Paso 4 y no usa cuotas.
 
 ---
 
 ## 🔥 Veredicto Final y Fallback del Sistema
 
 ```
-[SISTEMA]: PICK RECOMENDADO CON ALTO VALOR MATEMÁTICO (+EV)
+[SISTEMA]: EJEMPLO HISTÓRICO; NO REPRESENTA EL VEREDICTO DEL MOTOR ACTUAL
 Mercado Target: Over 7.5 Córners Totales
-Score de Confianza: 92%
+Score de Confianza: no usar el 92% histórico como resultado vigente
 Margen MOP: +1.0 (Línea Mínima 6.5 escalada exitosamente a 7.5)
-Cuota Evaluada: 1.85 (Probabilidad Implícita: 54.0% | Umbral +EV: 59.0%)
+Cuotas / +EV: no se usan en el motor actual
 
 Diagnóstico:
 Ambos equipos presentan un flujo constante de centros y disparos bloqueados por partido. 

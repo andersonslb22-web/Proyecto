@@ -2,7 +2,7 @@
 
 ## Objetivo y alcance acordado
 
-Desarrollar una aplicación web de uso personal para análisis y pronósticos deportivos. La información del partido, estadísticas, ausencias y cuotas se introduce manualmente en un formato estructurado; no se consumen APIs externas de partidos. La interfaz debe exponer los datos originales, cálculos, colchones, penalizaciones, score neto, evaluación +EV y veredicto. El motor local hará los cálculos reproducibles y Gemini aportará únicamente análisis cualitativo/decisión basada en métricas explícitas, a través de una integración que no exponga credenciales al navegador.
+Desarrollar una aplicación web de uso personal para análisis y evaluación estadística de mercados deportivos. La información del partido, estadísticas y contexto se introduce manualmente en un formato estructurado; no se consumen APIs externas de partidos ni se admiten cuotas en el JSON. La interfaz expone datos originales, cálculos, colchones, penalizaciones, score y veredictos deterministas; Gemini solo añade justificaciones cualitativas a candidatos elegibles mediante una integración que no expone credenciales al navegador.
 
 Alcance inicial: un flujo de partido individual, seis mercados permitidos, degradación automática únicamente hacia uno de esos mercados y sin persistencia. El ejemplo de carga de la app es Lille–Galatasaray, transcrito de `Partido.txt`; `Prueba-partido.txt` permanece como fixture de pruebas Juventus–Lazio.
 
@@ -12,10 +12,10 @@ Alcance inicial: un flujo de partido individual, seis mercados permitidos, degra
 |---|---|---|---|
 | Descubrimiento | Orquestador | Completado | Repositorio inspeccionado: solo README, siete documentos de algoritmos y perfiles de agentes; no hay aplicación, manifiesto ni `docs/`. Árbol existente sin cambios rastreados; `.env.local` presente y deliberadamente no inspeccionado. |
 | UX/UI | Diseñador de Prototipos & UX/UI | Completado | `docs/PROTOTIPO_UX.md` define las 18 métricas requeridas más tres adicionales de los expedientes (21), comparador, estados y criterios. |
-| Contrato matemático y Gemini | Orquestador + Backend | Implementado | `docs/CONTRATO_TECNICO.md` fija score 55/45, gates, penalizaciones, MOP, fallback cerrado y Gemini como redactor de justificaciones de candidatos elegibles. Proxy local seguro, sin persistencia. |
-| Frontend y motor | Desarrollador Frontend | Implementado | React + TypeScript + Vite; parser v1, comparación de 21 métricas, barras condicionales, score, buffers, penalizaciones, +EV, MOP, fallback completo visible, carga de `examples/partido.json` y justificaciones opcionales tras acción explícita. |
+| Contrato matemático y Gemini | Orquestador + Backend | Implementado | `docs/CONTRATO_TECNICO.md` fija score 55/45, gates, penalizaciones, MOP, fallback cerrado y justificaciones de candidatos elegibles. El JSON y el motor no usan cuotas ni EV. |
+| Frontend y motor | Desarrollador Frontend | Implementado | React + TypeScript + Vite; parser v1, comparación de 21 métricas, barras condicionales, candidatos generados localmente, score, buffers, penalizaciones, MOP y fallback. Favorito asiático por la cuota menor de victoria simple. |
 | Backend Gemini | Desarrollador Backend & DB Architect | Implementado | Proxy Node en loopback; origen exacto allowlisted, Content-Type JSON, límites/timeout/rate-limit, elegibilidad recalculada en servidor, minimización de datos, esquema de respuesta y cancelación upstream. No se llamó al proveedor real. |
-| QA funcional | QA Tester & Product Owner | Validación automatizada parcial | 58 pruebas y build correctos; fixtures separados, cotizaciones/campos faltantes exactos, motor, proxy y cancelación mocked. Lille local score 66.5 pero REJECT por colchón; Galatasaray REJECT <50. Pendiente QA visual/teclado/lector de pantalla en navegador. |
+| QA funcional | QA Tester & Product Owner | Validación automatizada parcial | 56 pruebas y build correctos; cobertura de parser, motor sin cuotas, API con proveedor simulado y desglose score de rutas. Pendiente QA visual/teclado/lector de pantalla en navegador. |
 | Auditoría | Auditor de Código & Lead Dev | Completada con observaciones | `APROBADO CON OBSERVACIONES`; cancelación cerrada y no hay hallazgos altos. QA visual/accesible en navegador y llamada real a Gemini siguen sin verificar. |
 
 ## Decisiones y restricciones
@@ -23,8 +23,8 @@ Alcance inicial: un flujo de partido individual, seis mercados permitidos, degra
 - La especificación de este encargo prevalece sobre las cifras divergentes de los documentos históricos de `Colchones/`; estos se conservan sin modificación.
 - El catálogo de mercados es cerrado: victoria simple 1/2, doble oportunidad 1X/X2, hándicap asiático negativo, córners totales altos, goles totales altos y goles individuales altos. BTTS y otros mercados citados como ejemplos en textos antiguos no se habilitarán como selección/fallback fuera de este catálogo.
 - Requisitos de colchón iniciales: victoria simple `>= +0.40`; doble oportunidad `>= +0.15`; hándicap negativo `>= +2.80 goles`; córners combinados ajustados `>= 10.0`; goles totales ajustados `>= 2.70`; goles individuales ajustados `>= 1.30`.
-- El score debe quedar limitado a 0–100 y descontar las penalizaciones indicadas. Si no hay cuota o datos suficientes, no se inventarán valores ni se afirmará +EV; se marcará como no evaluable/bloqueado según contrato.
-- La regla +EV estricta es `score > (1 / odds_decimal) * 100 + 5` puntos porcentuales; el código y pruebas respetan la desigualdad estricta.
+- El score debe quedar limitado a 0–100 y descontar las penalizaciones indicadas. Si faltan estadísticas u otros datos requeridos, no se inventarán valores; el candidato se marcará como no evaluable según contrato.
+- Ningún mercado calcula probabilidad implícita ni +EV. El favorito asiático se deriva de la menor cuota de victoria simple recibida en el JSON; xG neto sigue evaluando el gate y el score.
 - Las matrices legacy se adaptan a bloques 55/45 de forma documentada en `docs/CONTRATO_TECNICO.md`; fixtures sintéticos solo ejercitan reglas no cubiertas por las fuentes, sin atribuirles datos de partidos reales.
 - `Prueba-partido.txt` y `Partido.txt` son fuentes locales distintas: el primero se conserva como suite Juventus–Lazio y el segundo se transcribe como entrada de ejemplo Lille–Galatasaray. No se reescriben ni se parsean en runtime.
 - No se inspeccionará ni imprimirá `.env.local`; cualquier clave de Gemini debe permanecer exclusivamente del lado servidor.
@@ -34,7 +34,7 @@ Alcance inicial: un flujo de partido individual, seis mercados permitidos, degra
 1. QA visual, reflow móvil, teclado y lector de pantalla en navegador; no se declara validado sin comprobación real.
 2. Auditoría final completada el 2026-10-22: `APROBADO CON OBSERVACIONES`; ver entradas finales en Historial.
 3. No se hizo una llamada real a Gemini: tests usan `fetch` simulado. Para probar justificaciones reales, el usuario debe definir `GEMINI_API_KEY` y `GEMINI_MODEL` en el entorno del proceso API; no se inspeccionó `.env.local`.
-4. Las cotizaciones de los seis mercados ya están en `examples/partido.json`; el hándicap -1.5 es de Lille. La asociación de cuotas individuales sigue el orden local/visitante del expediente y queda documentada como supuesto.
+4. Las cuotas presentes en las fuentes TXT se excluyen de los expedientes JSON y del motor. El favorito asiático se determina por xG neto; un empate o datos faltantes dejan ese mercado no evaluable.
 
 ## Historial
 
@@ -107,7 +107,7 @@ Alcance inicial: un flujo de partido individual, seis mercados permitidos, degra
 - Se aprobó y documentó la matriz final: score 55/45 normalizado, rechazo terminal `<50`, seis mercados con Over/Under para goles/córners/individual, penalizaciones, +EV estricto, MOP y fallback dentro del catálogo.
 - `src/domain/engine.ts` implementa gates, score, penalizaciones, MOP, líneas cotizadas y fallback; los casos de datos faltantes permanecen trazables. Se corrigió la precedencia para que el score `<50` rechace incluso cuando un gate no sea evaluable.
 - `server/geminiApi.ts` y `server/index.ts` implementan el proxy ligado a loopback. El backend recalcula elegibilidad y minimiza datos; la UI solo pide justificaciones mediante acción explícita. Los tests no contactan Gemini real.
-- `tests/fixtures/test_juventus_lazio.json` conserva la transcripción de `Prueba-partido.txt`; `examples/partido.json` es la entrada canónica Lille–Galatasaray desde `Partido.txt`, con valores faltantes y xGA derivado etiquetados, sin cuotas inventadas.
+- `tests/fixtures/test_juventus_lazio.json` conserva la transcripción de `Prueba-partido.txt`; `examples/partido.json` es la entrada canónica Lille–Galatasaray desde `Partido.txt`, con valores faltantes, cuotas simples y xGA derivado etiquetados.
 - Se corrigió la banda de errores rivales para `team_goals under`; el vector API usa cuota 2.20 para probar rama elegible bajo +EV estricto, solo en pruebas sintéticas.
 - Verificación actual: `npm test` pasó (45 pruebas, 3 archivos); `npm run build` y `git diff --check` correctos; no hay errores del editor. Pendientes: QA visual/accesible y reauditoría del código completo. No se inspeccionó `.env.local` ni se llamó a Gemini.
 
@@ -194,3 +194,52 @@ Alcance inicial: un flujo de partido individual, seis mercados permitidos, degra
 - Cierre de la observación de cancelación: `requestJustifications` reconoce `AbortError` tanto durante `fetch` como durante `response.json()` y devuelve `{ ok: false, cancelled: true }`, sin mensaje de error. La prueba de `response.json()` rechazado con `AbortError` comprueba exactamente este resultado. La UI descarta cancelaciones sin mostrarlas como error; además aborta la solicitud al editar, revalidar/reanalizar o desmontar. El servidor propaga el cierre del cliente al `AbortSignal` de la llamada al proveedor, cubierto con fetch simulado.
 - Validación de esta reauditoría: `npm test` pasó (4 archivos, 58/58 pruebas); `npm run build` pasó (`tsc -b` y `vite build`). No se realizaron llamadas reales a Gemini.
 - Dictamen: **APROBADO CON OBSERVACIONES** para el cambio revisado. La observación de cancelación queda cerrada. No se declara aprobado QA visual, reflow móvil, teclado ni lector de pantalla: no se verificaron en navegador. Tampoco se declara validada una llamada real a Gemini; los tests del servidor usan un proveedor simulado.
+
+### 2026-10-22 — Mercados calculados sin cuotas
+
+- Se eliminó `simple_win_odds` del contrato `MatchInput`, del parser v1 y de ambos JSON de ejemplo/fixture. El parser rechaza cuotas y cotizaciones heredadas como propiedades no permitidas.
+- Los mercados y sus líneas se generan con el motor local a partir de estadísticas/contexto. El favorito del hándicap asiático se determina por mayor `xg - xga`; si faltan esos datos o hay empate, el candidato queda `not_evaluable`.
+- La UI dejó de presentar cuotas, probabilidad implícita y +EV. La API opcional de Gemini valida el mismo expediente y opera con IDs de candidatos, nunca con IDs de cotización.
+- Se reemplazaron pruebas del motor que dependían del contrato anterior por regresiones de candidatos estadísticos, gates, MOP y ausencia de favorito sin datos suficientes. Las pruebas API cubren rechazo del campo legado.
+- Validación: `npm test` pasó (4 archivos, 50 pruebas); `npm run build` pasó; `get_errors` no reportó errores en `src`, `server` ni `tests`. No se realizó llamada real a Gemini; QA visual/accesible sigue pendiente.
+- Auditoría del cambio: **APROBADO**; confirmó que no quedan usos activos de cuotas, que el favorito asiático depende solo de xG neto y que los IDs de Gemini corresponden a candidatos.
+
+### 2026-10-22 — Trazabilidad del score
+
+- Se añadió a cada candidato y ruta alternativa el aporte efectivo normalizado de cada factor de confirmación/respaldo, las penalizaciones y el ajuste si el score alcanza un límite.
+
+### 2026-10-24 — Metricas derivadas de segundo orden
+
+- Se inspecciono `examples/partido.json` y se incorporaron seis metricas informativas por equipo: conversion de goles por disparo, ratio xGOT/xG, tasas de tiros bloqueados y desviados, errores que llevan a disparo por volumen de tiros y corners por 100 puntos porcentuales de posesion.
+- Todas requieren fuentes `observed`, denominador positivo y resultado finito; de lo contrario conservan `null` y estado `not_evaluable`. No participan en `engine.ts`, por lo que la matriz 55/45, sus maximos y el score no cambian.
+- `docs/CONTRATO_TECNICO.md`, `src/domain/calculations.ts` y `tests/domain.test.ts` quedaron sincronizados. Validacion focalizada: 35/35 pruebas; errores de editor: ninguno. Suite completa, build y auditoria final pendientes.
+- La UI presenta “Trazabilidad del score” inmediatamente debajo de la trazabilidad del motor, con aportes a dos decimales, subtotal previo al límite, ajuste de redondeo cuando aplica y score final sobre 100.
+- Las pruebas verifican que la suma del desglose coincide con el score mostrado, incluido el ajuste del límite inferior, y contemplan ocasiones falladas, faltas, baja confirmada y goles evitados del portero.
+- La trazabilidad del motor ya no repite las penalizaciones que se detallan debajo en la trazabilidad del score. Las pruebas comprueban sumas exactas en rutas principal, escalada, fallback y límite inferior.
+- Validación final: `npm test` pasó (4 archivos, 56 pruebas); `npm run build` pasó; `get_errors` no reportó errores en las áreas modificadas.
+- Auditoría: **APROBADO CON OBSERVACIONES**; sin defectos en el desglose. Queda pendiente la comprobación visual/accesible en navegador.
+
+### 2026-10-22 — Urgencia derivada de clasificación
+
+- Solicitud: al pegar el expediente de partido, calcular urgencia automáticamente en el motor local y no en Gemini.
+- Se añadió `match.standings` con tamaño de tabla, puesto de corte, fuente y filas de los equipos asociadas por `team_id` (puesto, partidos jugados, puntos y diferencia de goles).
+- Regla determinista: fuera del corte = `high`; corte y dos posiciones anteriores = `medium`; más de dos posiciones por encima = `low`. Tabla ausente conserva `urgency` manual por compatibilidad; equipo sin fila o sin partidos jugados queda `unknown`. La traza del score expone puesto/tamaño/corte.
+- `examples/partido.json` incluye Lille 34/36 y Galatasaray 35/36, ambos fuera del corte 24 tras dos partidos; la urgencia resultante es alta. `points` y diferencia se preservan, no afectan todavía la regla.
+- Validación focalizada: `tests/domain.test.ts` (32/32), `tests/engine.test.ts` (10/10) y pruebas combinadas tras ajuste de trazabilidad (42/42).
+- Observación de auditoría cerrada: la traza explica también la urgencia `unknown` por fila ausente/cero partidos e incluye la fuente.
+- La traza conserva urgencia, motivo y fuente también cuando una métrica ausente deja el score `not_evaluable`; una regresión cubre esta ruta.
+- El contrato incluye `urgency` como campo manual opcional solo cuando no se proporciona tabla, y pruebas cubren `unknown` con score no evaluable.
+- `urgency: null` se rechaza; solo el campo omitido recurre a `unknown` en entradas sin tabla.
+- Validación final: `npm test` pasó (4 archivos, 58/58); `npm run build` pasó (`tsc -b` y Vite). Auditoría final: **APROBADO**, sin hallazgos bloqueantes.
+
+### 2026-10-22 — Trazabilidad de score para córners
+
+- `total_corners` mantiene la ponderación 55/45 y calcula el respaldo con proxies disponibles: centros combinados `>=10` (20), pases en campo contrario combinados `>=350` (15) y disparos totales combinados `>=30` (10).
+- La trazabilidad separa confirmación y respaldo y advierte que son proxies ofensivos, no córners concedidos. Con `partido.json`, el score queda en 90: 55 de confirmación + 45 de respaldo - 10 por ocasiones falladas.
+- Se añadió regresión para los umbrales, el score real de `partido.json` y la ausencia de `crosses`. Validación final: `npm test` 61/61; `npm run build` correcto.
+
+### 2026-10-22 — Aclaración documental del respaldo de córners
+
+- Se corrigió `Colchones/algoritmo_colch_n_din_mico_para_c_rners.md`: se eliminó la afirmación histórica de respaldo 50/50 como si fuera vigente y se documentó la matriz ejecutable (confirmación 30+25, respaldo 20+15+10 con proxies disponibles).
+- El documento ahora advierte que las cuotas, +EV y cifras históricas no reflejan el motor actual, y enlaza al contrato técnico como autoridad de comportamiento.
+- Validación: `git diff --check` sin errores; revisión del diff documental.

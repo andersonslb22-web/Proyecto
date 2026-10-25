@@ -118,10 +118,169 @@ export function calculateDerivedMetrics(input: MatchInput): DerivedMetric[] {
     formula: 'xG neto local - xG neto visitante', sources: ['xG y xGA observados de ambos equipos'],
     status: homeNet !== null && awayNet !== null && Number.isFinite(homeNet - awayNet) ? 'observed' : 'not_evaluable',
   })
+
+  // Métricas derivadas de segundo orden por equipo (ratios y eficiencias)
+  const secondOrderConfigs: Array<{
+    idPrefix: string
+    label: string
+    numKey: StatKey
+    denKey: StatKey
+    unit: string
+    formula: string
+    calc: (num: number, den: number) => number | null
+  }> = [
+    {
+      idPrefix: 'shot_accuracy_pct',
+      label: 'Precisión de disparo',
+      numKey: 'shots_on_target',
+      denKey: 'shots_total',
+      unit: '%',
+      formula: '(shots_on_target / shots_total) * 100',
+      calc: (num, den) => den > 0 ? (num / den) * 100 : null,
+    },
+    {
+      idPrefix: 'finishing_efficiency',
+      label: 'Eficiencia de finalización (Goles / xG)',
+      numKey: 'goals_scored',
+      denKey: 'xg',
+      unit: 'ratio',
+      formula: 'goals_scored / xg',
+      calc: (num, den) => den > 0 ? num / den : null,
+    },
+    {
+      idPrefix: 'xg_per_shot',
+      label: 'Calidad de tiro (xG por disparo)',
+      numKey: 'xg',
+      denKey: 'shots_total',
+      unit: 'goals',
+      formula: 'xg / shots_total',
+      calc: (num, den) => den > 0 ? num / den : null,
+    },
+    {
+      idPrefix: 'big_chance_conversion_pct',
+      label: 'Conversión de grandes ocasiones',
+      numKey: 'big_chances_created',
+      denKey: 'big_chances_missed',
+      unit: '%',
+      formula: '((big_chances_created - big_chances_missed) / big_chances_created) * 100',
+      calc: (created, missed) => created > 0 ? ((created - missed) / created) * 100 : null,
+    },
+    {
+      idPrefix: 'defensive_solidity_ratio',
+      label: 'Solidez defensiva (Goles / xGA)',
+      numKey: 'goals_conceded',
+      denKey: 'xga',
+      unit: 'ratio',
+      formula: 'goals_conceded / xga',
+      calc: (num, den) => den > 0 ? num / den : null,
+    },
+    {
+      idPrefix: 'territorial_pressure_index',
+      label: 'Presión territorial por posesión',
+      numKey: 'passes_opposition_half',
+      denKey: 'possession_pct',
+      unit: 'passes/%',
+      formula: 'passes_opposition_half / possession_pct',
+      calc: (num, den) => den > 0 ? num / den : null,
+    },
+    {
+      idPrefix: 'fouls_per_card_ratio',
+      label: 'Ratio de disciplina (Faltas por tarjeta)',
+      numKey: 'fouls',
+      denKey: 'cards',
+      unit: 'fouls/card',
+      formula: 'fouls / cards',
+      calc: (num, den) => den > 0 ? num / den : null,
+    },
+    {
+      idPrefix: 'goals_per_shot_pct',
+      label: 'Conversión de disparos en gol',
+      numKey: 'goals_scored',
+      denKey: 'shots_total',
+      unit: '%',
+      formula: '(goals_scored / shots_total) * 100',
+      calc: (num, den) => den > 0 ? (num / den) * 100 : null,
+    },
+    {
+      idPrefix: 'xgot_to_xg_ratio',
+      label: 'Calidad de tiro convertido en xGOT',
+      numKey: 'xgot',
+      denKey: 'xg',
+      unit: 'ratio',
+      formula: 'xgot / xg',
+      calc: (num, den) => den > 0 ? num / den : null,
+    },
+    {
+      idPrefix: 'blocked_shot_rate_pct',
+      label: 'Proporción de tiros bloqueados',
+      numKey: 'blocked_shots',
+      denKey: 'shots_total',
+      unit: '%',
+      formula: '(blocked_shots / shots_total) * 100',
+      calc: (num, den) => den > 0 ? (num / den) * 100 : null,
+    },
+    {
+      idPrefix: 'off_target_rate_pct',
+      label: 'Proporción de tiros desviados',
+      numKey: 'shots_off_target',
+      denKey: 'shots_total',
+      unit: '%',
+      formula: '(shots_off_target / shots_total) * 100',
+      calc: (num, den) => den > 0 ? (num / den) * 100 : null,
+    },
+    {
+      idPrefix: 'errors_to_shot_rate_pct',
+      label: 'Exposición a errores por volumen de tiro rival',
+      numKey: 'errors_leading_to_shot',
+      denKey: 'shots_total',
+      unit: '%',
+      formula: '(errors_leading_to_shot / shots_total) * 100',
+      calc: (num, den) => den > 0 ? (num / den) * 100 : null,
+    },
+    {
+      idPrefix: 'corners_per_100_possession',
+      label: 'Densidad de córners por posesión',
+      numKey: 'corners',
+      denKey: 'possession_pct',
+      unit: 'corners/100%',
+      formula: '(corners / possession_pct) * 100',
+      calc: (num, den) => den > 0 ? (num / den) * 100 : null,
+    },
+  ]
+
+  for (const team of [home, away]) {
+    const sidePrefix = team.side === 'home' ? 'home_' : 'away_'
+    for (const config of secondOrderConfigs) {
+      const num = sourceValue(team, config.numKey)
+      const den = sourceValue(team, config.denKey)
+      const ready = observed(num) && observed(den) && den.value > 0
+      let val: number | null = null
+      if (ready) {
+        const raw = config.calc(num.value, den.value)
+        if (raw !== null && Number.isFinite(raw)) {
+          val = raw
+        }
+      }
+      metrics.push({
+        id: `${sidePrefix}${config.idPrefix}`,
+        label: `${config.label} · ${team.name}`,
+        value: val,
+        unit: config.unit,
+        formula: config.formula,
+        sources: [`${team.name}: ${config.numKey}`, `${team.name}: ${config.denKey}`],
+        status: val !== null ? 'observed' : 'not_evaluable',
+      })
+    }
+  }
+
   const totals: Array<{ key: StatKey; id: string; label: string }> = [
     { key: 'corners', id: 'gross_corners_total', label: 'Córners · total bruto observado' },
     { key: 'goals_scored', id: 'gross_goals_total', label: 'Goles · total bruto observado' },
     { key: 'xg', id: 'gross_xg_total', label: 'xG · total bruto observado' },
+    { key: 'shots_total', id: 'gross_shots_total', label: 'Disparos totales · total bruto observado' },
+    { key: 'shots_on_target', id: 'gross_shots_on_target_total', label: 'Tiros a puerta · total bruto observado' },
+    { key: 'big_chances_created', id: 'gross_big_chances_created_total', label: 'Grandes ocasiones creadas · total bruto observado' },
+    { key: 'fouls', id: 'gross_fouls_total', label: 'Faltas · total bruto observado' },
   ]
   for (const total of totals) {
     const homeMeasurement = sourceValue(home, total.key)

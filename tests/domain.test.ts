@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { calculateDerivedMetrics, compareObservedMeasurements } from '../src/domain/calculations'
 import { issueLocation } from '../src/domain/issueLocation'
@@ -343,6 +344,79 @@ describe('barras comparativas pareadas', () => {
 })
 
 describe('derivadas observables', () => {
+  it('calcula las seis métricas nuevas con el fixture sintético', () => {
+    const parsed = parseMatchInput(readFileSync(new URL('./fixtures/test_juventus_lazio.json', import.meta.url), 'utf8'))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const metrics = calculateDerivedMetrics(parsed.value)
+    const expected = {
+      home_goals_per_shot_pct: 1.5 / 18.3 * 100,
+      away_goals_per_shot_pct: 1.8 / 13.5 * 100,
+      home_xgot_to_xg_ratio: 1.75 / 1.62,
+      away_xgot_to_xg_ratio: 1.57 / 1.6,
+      home_blocked_shot_rate_pct: 4.8 / 18.3 * 100,
+      away_blocked_shot_rate_pct: 3 / 13.5 * 100,
+      home_off_target_rate_pct: 7 / 18.3 * 100,
+      away_off_target_rate_pct: 6.2 / 13.5 * 100,
+      home_errors_to_shot_rate_pct: (1 / 6) / 18.3 * 100,
+      away_errors_to_shot_rate_pct: (1 / 6) / 13.5 * 100,
+      home_corners_per_100_possession: 8.7 / 58.7 * 100,
+      away_corners_per_100_possession: 4.8 / 49.5 * 100,
+    }
+
+    for (const [id, value] of Object.entries(expected)) {
+      const metric = metrics.find((item) => item.id === id)
+      expect(metric?.value).toBeCloseTo(value)
+      expect(metric?.status).toBe('observed')
+    }
+  })
+
+  it('marks new metrics not evaluable for zero denominators and missing sources', () => {
+    const parsed = parseMatchInput(readFileSync(new URL('./fixtures/test_juventus_lazio.json', import.meta.url), 'utf8'))
+    expect(parsed.ok).toBe(true)
+    if (!parsed.ok) return
+
+    const zeroDenominator = structuredClone(parsed.value)
+    zeroDenominator.match.teams[0].stats.shots_total = {
+      value: 0, unit: 'count', status: 'observed', source_label: 'test',
+    }
+    const zeroMetrics = calculateDerivedMetrics(zeroDenominator)
+    for (const id of [
+      'home_goals_per_shot_pct', 'home_blocked_shot_rate_pct',
+      'home_off_target_rate_pct', 'home_errors_to_shot_rate_pct',
+    ]) {
+      const metric = zeroMetrics.find((item) => item.id === id)
+      expect(metric?.value).toBeNull()
+      expect(metric?.status).toBe('not_evaluable')
+    }
+
+    zeroDenominator.match.teams[0].stats.xg = {
+      value: 0, unit: 'goals', status: 'observed', source_label: 'test',
+    }
+    const zeroXgMetric = calculateDerivedMetrics(zeroDenominator)
+      .find((item) => item.id === 'home_xgot_to_xg_ratio')
+    expect(zeroXgMetric?.value).toBeNull()
+    expect(zeroXgMetric?.status).toBe('not_evaluable')
+
+    const missingSource = structuredClone(parsed.value)
+    missingSource.match.teams[0].stats.possession_pct = {
+      value: null, unit: 'percent', status: 'missing', source_label: null,
+    }
+    const missingMetrics = calculateDerivedMetrics(missingSource)
+    const metric = missingMetrics.find((item) => item.id === 'home_corners_per_100_possession')
+    expect(metric?.value).toBeNull()
+    expect(metric?.status).toBe('not_evaluable')
+
+    missingSource.match.teams[0].stats.goals_scored = {
+      value: null, unit: 'goals', status: 'missing', source_label: null,
+    }
+    const missingNumeratorMetric = calculateDerivedMetrics(missingSource)
+      .find((item) => item.id === 'home_goals_per_shot_pct')
+    expect(missingNumeratorMetric?.value).toBeNull()
+    expect(missingNumeratorMetric?.status).toBe('not_evaluable')
+  })
+
   it('calculates xG neto and bruto totals only from observed, matching-unit values', () => {
     const raw = inputWith(
       { xg: measurement(1.7, 'goals'), xga: measurement(0.8, 'goals'), corners: measurement(6, 'count'), goals_scored: measurement(2, 'goals') },

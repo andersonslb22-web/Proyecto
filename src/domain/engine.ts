@@ -323,9 +323,9 @@ function scoreFor(input: MatchInput, candidate: Candidate, gate: GateProjection)
       factor(band(prevented!, 1, 13, false), 13, 'Goles evitados propios'),
     ]
     support = [
-      factor(gate.status === 'pass' ? 20 : 0, 20, 'Sustitución de tasa de no-victoria por gate de resistencia'),
-      factor(band(rivalConceded!, 1.3, 25, false), 25, 'Goles concedidos del rival'),
-      factor(band(rivalErrors!, 1, 20, false), 20, 'Errores rivales que conducen al gol'),
+      factor(gate.status === 'pass' ? 15 : 0, 15, 'Sustitución de tasa de no-victoria por gate de resistencia'),
+      factor(band(rivalConceded!, 1.3, 20, false), 20, 'Goles concedidos del rival'),
+      factor(band(rivalErrors!, 1, 10, false), 10, 'Errores rivales que conducen al gol'),
     ]
   } else if (candidate.market === 'asian_handicap') {
     if (!chosen || !opponent || candidate.line_value === null) return null

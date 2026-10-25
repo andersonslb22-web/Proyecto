@@ -33,7 +33,7 @@ El expediente requiere partido y exactamente dos equipos. El schema JSON v1 y su
 
 ### Partido
 
-Presentar los datos del partido que vengan en la entrada (por ejemplo, identificadores/equipos, competición, fecha, localía y cuotas si se aportan); no exigir ni inferir campos cuya obligatoriedad no esté acordada. Validar que el bloque pueda interpretarse, que exista un partido y que se puedan identificar dos equipos distintos. Los errores señalan el campo o la ubicación disponible y permiten volver al editor sin borrar el contenido.
+Presentar los datos del partido y equipos, competición, fecha, localía y estadísticas aportadas. Las cuotas y precios no forman parte de la entrada ni de los cálculos. Validar que el bloque pueda interpretarse, que exista un partido y que se puedan identificar dos equipos distintos. Los errores señalan el campo o la ubicación disponible y permiten volver al editor sin borrar el contenido.
 
 ### Cada equipo
 
@@ -66,14 +66,14 @@ Los datos estadísticos del motor deben ser promedios por partido `season_to_dat
 
 ## Mercados y reglas visibles
 
-Catálogo cerrado de destino, selección y fallback. La interfaz admite over y under en goles/córners totales e individuales; nunca ofrece BTTS, hándicap positivo ni mercados fuera de los seis contratos.
+Catálogo cerrado de destino, selección y fallback. Los totales de goles/córners y goles individuales generan únicamente selecciones Over; nunca ofrecen under, BTTS, hándicap positivo ni mercados fuera de los seis contratos.
 
 | Mercado permitido | Colchón/requisito comunicado |
 |---|---|
 | Victoria simple 1/2 | Diferencial de xG neto de al menos `+0.40` |
 | Doble oportunidad 1X/X2 | Margen de imbatibilidad de al menos `+0.15` |
 | Hándicap asiático negativo | Ventaja de hándicap de al menos `2.80 goles` |
-| Córners totales over/under | Proyección frente a línea con colchón base `3.5` córners |
+| Córners totales Over | Proyección frente a línea con colchón base `3.5` córners |
 | Goles totales over/under | Proyección frente a línea con colchón base `1.2` goles |
 | Goles individuales over/under | Proyección del equipo frente a línea con colchón base `0.8` goles |
 
@@ -84,7 +84,7 @@ Modificadores requeridos, visibles cuando apliquen:
 - Portero rival con goles evitados `>= 1.20`: `-15` en victoria simple y overs de goles individuales/totales; no córners, unders ni hándicap.
 - Grandes ocasiones falladas `>= 2.0`: `-10` al subtotal normalizado de confirmación según mercado; no doble oportunidad.
 - Score expresado en escala `0–100`, con límite inferior y superior. Si las penalizaciones superan la base, el mínimo mostrado es 0; no permitir score superior a 100.
-- Regla +EV: `score > (1/cuota_decimal) * 100 + 5`, en porcentaje y con desigualdad estricta.
+- No se calcula valor esperado, probabilidad implícita ni ningún indicador que dependa de cuotas.
 
 El score aplica matrices adaptadas y normalizadas 55/45, regla terminal score `<50`, gates/MOP y fallback del contrato técnico. El resultado es una evaluación determinista basada en entrada manual, no una garantía estadística.
 
@@ -93,7 +93,8 @@ El score aplica matrices adaptadas y normalizadas 55/45, regla terminal score `<
 Cada tarjeta muestra, cuando estén disponibles y definidos:
 
 - Mercado y selección dentro del catálogo, score `0–100` y estado.
-- Cuota introducida, probabilidad implícita, margen MOP y cálculo/definición aplicados.
+- Debajo de “Trazabilidad del motor”, “Trazabilidad del score” desglosa los aportes normalizados de confirmación/respaldo, las penalizaciones, límites aplicados y score final.
+- Línea generada por el motor, margen MOP y cálculo/definición aplicados; no se solicitan cuotas.
 - Prueba de colchón: valor observado, umbral, unidad y resultado aprobado/no aprobado/no evaluable.
 - Ajustes y penalizaciones como partidas separadas, con condición activada y procedencia.
 - Datos faltantes/no evaluables que afectan el resultado, sin sustituirlos por cero.
@@ -102,10 +103,10 @@ Cada tarjeta muestra, cuando estén disponibles y definidos:
 
 Usar exactamente los estados de negocio requeridos, distinguiéndolos visualmente y con texto:
 
-- **Escalar:** elevar la línea cotizada según los límites MOP del contrato; mostrar línea anterior/nueva y recalcular score, colchón y +EV.
-- **Elegible:** score `>=50`, colchón/MOP aprobado y +EV estricto aprobado. Gemini puede justificarlo, no cambiar su estado.
-- **Fallback:** intentar primero una línea conservadora cotizada del mismo mercado y recalcular todo; después, si aplica, doble oportunidad vinculada al equipo con mayor `net_xg`. Nunca salir del catálogo.
-- **Rechazado:** incluye score `<50` terminal, fallo de colchón/MOP o +EV. El score `<50` no activa fallback.
+- **Escalar:** ajustar la línea generada según los límites MOP del contrato; mostrar línea anterior/nueva y recalcular score y colchón.
+- **Elegible:** score `>=50` y colchón/MOP aprobado. Gemini puede justificarlo, no cambiar su estado.
+- **Fallback:** intentar primero una línea conservadora generada del mismo mercado y recalcular todo; después, si aplica, doble oportunidad vinculada al equipo con mayor `net_xg`. Nunca salir del catálogo.
+- **Rechazado:** incluye score `<50` terminal o fallo de colchón/MOP. El score `<50` no activa fallback.
 - **No evaluable:** faltan datos que una regla requiere. No se imputa ni se presenta como cero.
 
 Un estado de carga no implica que un pronóstico esté aprobado. Si Gemini falla, las cifras/validaciones deterministas siguen identificadas por separado y el cualitativo se marca como no disponible; no fabricar una respuesta de IA.
@@ -132,11 +133,11 @@ Dirección funcional y sobria para uso repetido: encabezados compactos, jerarqu�
 
 ## Reglas aprobadas
 
-Las fórmulas, matrices 55/45, penalizaciones, gates, +EV, límites MOP y fallback se definen en `docs/CONTRATO_TECNICO.md`. El motor aplica esas reglas localmente y conserva una traza por cuota; solo considera cuotas incluidas en el JSON. Un dato faltante requerido deja el candidato `not_evaluable`, no se imputa ni se sustituye por otro indicador fuera de las adaptaciones documentadas.
+Las fórmulas, matrices 55/45, penalizaciones, gates, límites MOP y fallback se definen en `docs/CONTRATO_TECNICO.md`. El motor aplica esas reglas localmente y conserva una traza por candidato; el JSON contiene únicamente las dos cuotas de victoria simple para identificar el favorito, sin calcular precio, probabilidad implícita ni +EV. Un dato faltante requerido deja el candidato `not_evaluable`, no se imputa ni se sustituye por otro indicador fuera de las adaptaciones documentadas.
 
 ## Supuestos conservadores explícitos
 
-- El input manual es la fuente de datos y no se verifica contra proveedores externos.
+- El input manual es la fuente de datos y no se verifica contra proveedores externos. Si incluye una tabla estructurada, el motor deriva urgencia con la regla explícita del contrato; Gemini no la calcula.
 - El catálogo de seis mercados es una enumeración cerrada incluso para fallback; ninguna excepción histórica lo amplía.
 - Las estadísticas faltantes no se sustituyen por cero ni por promedios inferidos; se señalan y el candidato queda no evaluable cuando la regla depende de ellas.
 - Una cifra original no se altera; toda transformación se muestra aparte y con fórmula/origen según el contrato.
@@ -146,20 +147,21 @@ Las fórmulas, matrices 55/45, penalizaciones, gates, +EV, límites MOP y fallba
 
 ## Criterios de aceptación verificables
 
-1. La vista permite pegar y editar una entrada estructurada manual; no hay llamada ni dependencia de API de partidos.
+1. La vista permite pegar y editar una entrada estructurada manual, incluida la tabla de clasificación cuando esté disponible; no hay llamada ni dependencia de API de partidos.
 2. Una entrada vacía, con sintaxis incorrecta o con expediente/equipo inválido produce un error localizado, conserva el texto y no muestra análisis como válido.
 3. Partido, local y visitante tienen estado de validación independiente; los errores de cada equipo se pueden identificar sin confundir sus estadísticas.
-4. El comparador incluye las 18 estadísticas requeridas y las métricas adicionales incluidas en las fuentes (21 en total), en sus cuatro grupos, para ambos equipos; una ausencia no se representa como cero.
+4. El comparador incluye las 18 estadísticas requeridas y las métricas adicionales incluidas en las fuentes (22 en total, incluidos centros por partido), en sus cuatro grupos, para ambos equipos; una ausencia no se representa como cero.
 5. Se distinguen datos originales de métricas derivadas; cada derivada expone origen y fórmula aprobada, o se marca no evaluable si no existe fórmula/dato suficiente.
-6. La interfaz presenta únicamente victoria simple 1/2, doble oportunidad 1X/X2, hándicap asiático negativo, goles totales Over/Under, córners totales Over/Under y goles individuales Over/Under. Ni selección ni fallback ofrecen BTTS, hándicap positivo ni otro mercado.
+6. La interfaz presenta únicamente victoria simple 1/2, doble oportunidad 1X/X2, hándicap asiático negativo, goles totales Over/Under, córners totales Over y goles individuales Over/Under. Ni selección ni fallback ofrecen BTTS, hándicap positivo ni otro mercado.
 7. Los colchones, scores, penalizaciones y gates coinciden con el contrato técnico y muestran umbral, puntos, ámbito y condición.
-8. Cada tarjeta contiene los campos explicables definidos (score, cuota, probabilidad implícita, MOP, test de colchón, ajustes, faltantes e IA cualitativa) o indica explícitamente “pendiente/no evaluable” en vez de inventar un valor.
-9. El +EV usa comparación estricta aprobada y muestra fórmula/escala y cuota fuente; si la cuota no es válida, el candidato no se evalúa.
+8. Cada tarjeta contiene los campos explicables definidos (score, línea generada, MOP, test de colchón, ajustes, faltantes e IA cualitativa) o indica explícitamente “pendiente/no evaluable” en vez de inventar un valor.
+9. Ningún resultado depende de cuotas: no se calculan probabilidades implícitas ni +EV, y el parser rechaza campos de cuotas/precios heredados.
 10. Escalar, elegible, fallback, rechazado y no evaluable son estados textuales diferenciados. El fallback recalcula los gates y nunca sale del catálogo.
 11. El cualitativo de IA está claramente separado; no inventa ni corrige cifras y un fallo de IA no cambia score, elegibilidad ni cifras del motor.
 12. Vacío, carga, éxito, errores de entrada, fallo de análisis/IA y falta de datos tienen representación y recuperación especificadas; una edición invalida resultados anteriores.
 13. Las tareas de pegar, corregir, validar, analizar y revisar resultados funcionan con teclado, foco visible y mensajes accesibles; la pantalla refluye en móvil sin pérdida de datos/acciones ni dependencia del color.
 14. No se muestran estadísticas ficticias de Juventus vs. Lazio ni cifras de ejemplo histórico presentadas como datos del fixture.
+15. Con `standings`, el motor deriva la urgencia de cada equipo según el puesto y el corte configurado; si faltan datos suficientes queda desconocida y la trazabilidad muestra motivo, puesto/corte y fuente disponibles. Sin tabla se conserva la urgencia manual por compatibilidad.
 
 ## Archivos de este entregable
 

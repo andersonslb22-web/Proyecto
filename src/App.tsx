@@ -68,7 +68,7 @@ function formatSelection(candidate: Candidate, input: MatchInput) {
   const team = input.match.teams.find(({ team_id }) => team_id === candidate.team_id)
   if (candidate.market === 'simple_win') return `${candidate.selection === 'home' ? 'Local' : 'Visitante'} · ${team?.name ?? 'equipo no disponible'}`
   if (candidate.market === 'double_chance') return `${candidate.selection} · ${team?.name ?? 'equipo no disponible'}`
-  if (candidate.market === 'asian_handicap') return `${candidate.selection === 'favorite' ? 'Favorito' : 'No favorito'} · ${team?.name ?? 'no determinado'}`
+  if (candidate.market === 'asian_handicap') return `${candidate.selection === 'favorite' ? 'Favorito' : 'No favorito'} · ${team?.name ?? 'no determinado'} · línea ${candidate.line_value}`
   if (candidate.market === 'team_goals') return `Over ${candidate.line_value ?? '0.5'} goles · ${team?.name ?? 'equipo no disponible'}`
   return `${candidate.selection === 'OVER' ? 'Over' : candidate.selection} ${candidate.line_value ?? ''}`.trim()
 }
@@ -142,11 +142,13 @@ function RouteResult({ route, title, input }: { route: RouteEvaluation; title: s
 
 function CandidateResult({ candidate, input, justification }: { candidate: CandidateEvaluation; input: MatchInput; justification?: string }) {
   const traceItems = candidate.trace.filter((item) => !candidate.penalties.includes(item))
+  const lineDisplay = candidate.candidate.line_value !== null ? `línea: ${candidate.candidate.line_value}` : 'sin línea';
   return <section className="candidate-result" aria-label={`Resultado de ${formatSelection(candidate.candidate, input)}`}>
     <div className="candidate-heading">
       <strong>{formatSelection(candidate.candidate, input)}</strong>
       <span className={`candidate-state candidate-state-${candidate.status.toLowerCase()}`}>{formatDecision(candidate.status)}</span>
     </div>
+    <p className="candidate-line">Valor de línea: {lineDisplay}</p>
     <dl className="pending-fields">
       <div><dt>Score / 100</dt><dd>{candidate.score === null ? 'No evaluable' : candidate.score.toFixed(2)}</dd></div>
       <div><dt>Ruta</dt><dd>{candidate.route === 'primary' ? 'Principal' : candidate.route === 'scaled' ? 'Escalada' : candidate.route === 'fallback' ? 'Fallback' : 'Sin fallback'}</dd></div>
